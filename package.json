@@ -1,0 +1,16 @@
+{
+  "name": "rumia",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rumia, app lechera de Dos Banderas",
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor-community/text-to-speech": "^6.0.0",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0"
+  }
+}

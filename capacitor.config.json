@@ -1,0 +1,8 @@
+{
+  "appId": "com.dosbanderas.rumia",
+  "appName": "Rumia",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#ffffff"
+  }
+}
