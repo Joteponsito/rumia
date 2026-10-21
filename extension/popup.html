@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Rumia</title>
+<style>
+:root{--bg:#f3f5f0;--surface:#fff;--ink:#141c17;--muted:#59665e;--line:#d9dfd5;--accent:#1c8139;--accent-ink:#fff;--crit:#b9352b;--ok-soft:#dbefe1}
+@media (prefers-color-scheme: dark){:root{--bg:#0e1310;--surface:#161d19;--ink:#e6ebe5;--muted:#98a69d;--line:#29342d;--accent:#5fcf7d;--accent-ink:#0b1a10;--crit:#f07f6d;--ok-soft:#163022;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;width:340px;background:var(--bg);color:var(--ink);font:14px/1.4 "Segoe UI",system-ui,sans-serif}
+header{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--surface)}
+header img{width:40px;height:40px;border-radius:8px;border:1px solid var(--line);background:#fff}
+header b{font-size:16px;display:block}
+header span{color:var(--muted);font-size:12px}
+main{padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+button{font:inherit;border-radius:10px;padding:10px 12px;cursor:pointer;font-weight:600;width:100%}
+.prim{background:var(--accent);color:var(--accent-ink);border:0}
+.sec{background:var(--surface);color:var(--ink);border:1px solid var(--line)}
+.peq{background:none;border:0;color:var(--crit);font-weight:600;padding:4px;width:auto;font-size:12px}
+.msg{font-size:13px;padding:8px 10px;border-radius:8px;background:var(--ok-soft)}
+.msg.err{background:transparent;color:var(--crit);padding:0}
+ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:190px;overflow:auto}
+li{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:12px}
+li b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+li span{color:var(--muted)}
+.fila{display:flex;justify-content:space-between;align-items:center}
+.nota{color:var(--muted);font-size:12px;margin:0}
+</style>
+</head>
+<body>
+<header><img src="icono128.png" alt=""><div><b>Rumia</b><span>Dos Banderas · lector de monitoreos web</span></div></header>
+<main>
+  <button class="prim" id="leer">Leer las tablas de esta página</button>
+  <div id="msg" hidden></div>
+  <div class="fila"><span class="nota" id="resumen">Sin tablas leídas todavía.</span><button class="peq" id="borrar" hidden>Borrar todo</button></div>
+  <ul id="lista"></ul>
+  <button class="sec" id="abrir">Abrir Rumia</button>
+  <p class="nota">Si la tabla tiene varias páginas, ponga el máximo de filas por página o lea cada página: las filas se juntan solas.</p>
+</main>
+<script src="popup.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-name: Construir APK de Rumia
+name: Construir APK y extensión de Rumia
 
 on:
   workflow_dispatch:
@@ -45,6 +45,11 @@ jobs:
           ./gradlew assembleDebug --no-daemon
           cp app/build/outputs/apk/debug/app-debug.apk ../Rumia.apk
 
+      - name: Armar la extensión de Chrome
+        run: |
+          cp node_modules/xlsx/dist/xlsx.full.min.js extension/
+          cd extension && zip -r ../Rumia-Chrome.zip . && cd ..
+
       - uses: actions/upload-artifact@v5
         with:
           name: Rumia-APK
@@ -55,4 +60,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete ultima-version --yes --cleanup-tag || true
-          gh release create ultima-version Rumia.apk --title "Rumia (última versión)" --notes "APK de Rumia generado automáticamente. Descargue Rumia.apk e instálelo en el teléfono." --latest
+          gh release create ultima-version Rumia.apk Rumia-Chrome.zip --title "Rumia (última versión)" --notes "Rumia.apk: app para Android. Rumia-Chrome.zip: extensión de Chrome para leer los monitoreos web (descomprimir y cargar en chrome://extensions con el modo de desarrollador)." --latest

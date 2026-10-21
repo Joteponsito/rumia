@@ -289,6 +289,7 @@ function analizar(a){
     if (a.estado === "Inseminada" && a.ultima_ia){ const d = daysSince(a.ultima_ia); a.dias_ia = d;
       if (d >= U.diag_prenez_dias) al.push({sev:"info", tipo:"Diagnóstico de preñez", txt:`Inseminada hace ${d} días (${a.ultima_ia})`, rec:"Incluir en la próxima palpación o ultrasonido."}); }
     if (a.cc != null && a.cc <= 2.5 && a.del_ != null && a.del_ < 60) al.push({sev:"media", tipo:"Condición corporal baja", txt:`CC ${String(a.cc).replace(".",",")} con ${a.del_} días en leche`, rec:"Revisar dieta del grupo de inicio de lactancia."});
+    if (a.temp_corp != null && a.temp_corp >= 39.5) al.push({sev: a.temp_corp >= 40 ? "alta" : "media", tipo:"Temperatura alta", txt:`${String(a.temp_corp).replace(".",",")} °C`, rec:"Revisar a la vaca: posible fiebre (mastitis, metritis, neumonía) o estrés calórico."});
     if (a.prep_s > U.prep_meta_s) al.push({sev:"info", tipo:"Preparación lenta", txt:`${a.prep_s} s hasta el pico de flujo (meta ≤ ${U.prep_meta_s} s)`, rec:"Revisar rutina de despunte y estimulación."});
   }
   if ((a.grupo === "Secas" || a.grupo === "Novillas") && a.estado === "Preñada" && a.dias_prenez != null){
@@ -1177,50 +1178,53 @@ function abrirFicha(num){
 function cerrarFicha(){ detenerVoz(); $("#sheet").innerHTML = ""; }
 
 /* ================= Lectura de reportes del productor ================= */
-const norm = s => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9#]+/g," ").trim();
+const norm = s => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9#\u4e00-\u9fff]+/g," ").trim();
 const CAMPOS = [
-  ["num","Número de vaca",["vaca","numero de vaca","no vaca","num vaca","numero vaca","n vaca","nro vaca","numero","num","nro","animal","id animal","arete","chapa","identificacion","id","no animal","numero animal","cow","cow id","cow no"]],
-  ["fecha","Fecha",["fecha","dia","date","fecha ordeno","fecha de ordeno","fecha del reporte"]],
-  ["leche","Leche del día",["leche","leche 24 h","leche 24h","leche total","produccion","produccion diaria","produccion total","litros","kg leche","leche dia","leche del dia","rendimiento","milk","leche diaria","total leche","daily avg yield","daily yield","milk yield"]],
+  ["num","Número de vaca",["牛号","耳号","牛只编号","牛只号","编号","cow no","ear tag","tag id","animal id","eartag","vaca","numero de vaca","no vaca","num vaca","numero vaca","n vaca","nro vaca","numero","num","nro","animal","id animal","arete","chapa","identificacion","id","no animal","numero animal","cow","cow id","cow no"]],
+  ["fecha","Fecha",["日期","记录日期","时间","fecha","dia","date","fecha ordeno","fecha de ordeno","fecha del reporte"]],
+  ["leche","Leche del día",["产奶量","日产奶","日产奶量","奶量","milk yield","daily milk","leche","leche 24 h","leche 24h","leche total","produccion","produccion diaria","produccion total","litros","kg leche","leche dia","leche del dia","rendimiento","milk","leche diaria","total leche","daily avg yield","daily yield","milk yield"]],
   ["md","Leche medio día / mañana",["medio dia","manana","am","turno 1","ordeno 1","leche manana","leche medio dia","leche am"]],
   ["no","Leche noche / tarde",["noche","tarde","pm","turno 2","ordeno 2","leche noche","leche tarde","leche pm"]],
   ["turno","Turno",["turno","ordeno no","sesion"]],
-  ["rumia","Rumia (minutos)",["rumia","rumiacion","rumia 24 h","rumia 24h","rumia 24 h previas","minutos rumia","rumia min"]],
-  ["grupo","Grupo / corral",["grupo","corral","lote","group","potrero","hato grupo","grp"]],
-  ["del","Días en leche",["del","dias en leche","dias leche","dim","dias lactancia","dias en lactancia","dias en ordeno"]],
-  ["lact","Lactancia",["lactancia","lact","no lactancia","numero lactancia","numero de lactancia","num lact","no lact","partos","parto no"]],
-  ["estado","Estado reproductivo",["estado","estado reproductivo","estado repro","situacion reproductiva","condicion reproductiva","estado rep","gyn status","status reproductivo"]],
-  ["dias_prenez","Días de preñez",["dias prenez","dias de prenez","dias gestacion","dias de gestacion","dias prenada"]],
-  ["servicios","Servicios",["servicios","no servicios","numero de servicios","inseminaciones","num ia","no ia","ia","servicio no"]],
-  ["ultima_ia","Fecha última inseminación",["ultima ia","fecha ia","ultima inseminacion","fecha ultima ia","fecha servicio","ultimo servicio","fecha de servicio"]],
+  ["rumia","Rumia (minutos)",["反刍","反刍时间","反刍时长","rumination","rumination time","rumia","rumiacion","rumia 24 h","rumia 24h","rumia 24 h previas","minutos rumia","rumia min"]],
+  ["grupo","Grupo / corral",["牛舍","群组","分组","圈舍","牛群","pen","barn","grupo","corral","lote","group","potrero","hato grupo","grp"]],
+  ["del","Días en leche",["泌乳天数","产后天数","days in milk","del","dias en leche","dias leche","dim","dias lactancia","dias en lactancia","dias en ordeno"]],
+  ["lact","Lactancia",["胎次","parity","lactancia","lact","no lactancia","numero lactancia","numero de lactancia","num lact","no lact","partos","parto no"]],
+  ["estado","Estado reproductivo",["繁殖状态","状态","reproductive status","repro status","estado","estado reproductivo","estado repro","situacion reproductiva","condicion reproductiva","estado rep","gyn status","status reproductivo"]],
+  ["dias_prenez","Días de preñez",["怀孕天数","妊娠天数","孕天","days pregnant","dias prenez","dias de prenez","dias gestacion","dias de gestacion","dias prenada"]],
+  ["servicios","Servicios",["配种次数","输精次数","times bred","breedings","servicios","no servicios","numero de servicios","inseminaciones","num ia","no ia","ia","servicio no"]],
+  ["ultima_ia","Fecha última inseminación",["配种日期","最近配种日期","上次配种","last breeding","last insemination","ultima ia","fecha ia","ultima inseminacion","fecha ultima ia","fecha servicio","ultimo servicio","fecha de servicio"]],
   ["toro","Toro",["toro","semen","pajilla","padre"]],
   ["cc","Condición corporal",["cc","condicion corporal","bcs","cond corporal"]],
-  ["peso","Peso (kg)",["peso","peso kg","weight","peso actual"]],
-  ["raza","Raza",["raza","breed"]],
-  ["actividad","Alerta de celo / actividad",["celo","alerta celo","alerta de celo","actividad","activity","alerta actividad"]],
-  ["nacimiento","Fecha de nacimiento",["fecha nacimiento","nacimiento","fecha de nacimiento","f nac","fecha nac"]],
+  ["peso","Peso (kg)",["体重","peso","peso kg","weight","peso actual"]],
+  ["raza","Raza",["品种","raza","breed"]],
+  ["actividad","Alerta de celo / actividad",["发情","发情预警","heat alert","estrus alert","celo","alerta celo","alerta de celo","actividad","activity","alerta actividad"]],
+  ["nacimiento","Fecha de nacimiento",["出生日期","birth date","date of birth","fecha nacimiento","nacimiento","fecha de nacimiento","f nac","fecha nac"]],
   ["edad","Edad",["edad","edad dias","dias de edad","edad meses","edad en dias","edad en meses"]],
-  ["tratamiento","Tratamiento / enfermedad",["tratamiento","medicamento","enfermedad","diagnostico","evento","problema de salud"]],
-  ["inicio_celo","Inicio del celo",["heat signs started","inicio celo","inicio del celo","inicio de celo","celo inicio","hora inicio celo","started","heat started","inicio"]],
-  ["ventana","Ventana de fertilidad",["fertility window","ventana fertil","ventana de fertilidad","ventana","hora optima","hora de inseminacion"]],
+  ["tratamiento","Tratamiento / enfermedad",["疾病","治疗","用药","health alert","tratamiento","medicamento","enfermedad","diagnostico","evento","problema de salud"]],
+  ["inicio_celo","Inicio del celo",["发情时间","发情开始时间","发情开始","heat time","estrus time","heat start","heat signs started","inicio celo","inicio del celo","inicio de celo","celo inicio","hora inicio celo","started","heat started","inicio"]],
+  ["ventana","Ventana de fertilidad",["建议配种时间","最佳配种时间","配种窗口","breeding window","best breeding time","fertility window","ventana fertil","ventana de fertilidad","ventana","hora optima","hora de inseminacion"]],
   ["concepcion","Probabilidad de concepción",["conception","concepcion","prob concepcion","probabilidad de concepcion","probabilidad"]],
   ["indicador1","Indicador de celo 1",["heat indicator","heat indicator 1","indicador de celo","indicador celo","indicador de celo 1","indicador 1"]],
   ["horas_ia","Horas para la inseminación",["horas para la inseminacion","horas la inseminacion","horas para la ia","horas para inseminar","hours to insemination","horas para la inseminacion optima"]],
-  ["pico_actividad","Pico de actividad",["pico de actividad","pico actividad","activity peak","peak activity"]],
+  ["pico_actividad","Pico de actividad",["活动量峰值","活动峰值","activity peak","pico de actividad","pico actividad","activity peak","peak activity"]],
   ["pico_rumia","Pico de rumia",["pico de rumiacion","pico de rumia","pico rumiacion","pico rumia","rumination peak"]],
-  ["indice_celo","Índice de celo",["indice de celo","indice celo","heat index","heat idx"]],
+  ["indice_celo","Índice de celo",["发情指数","发情强度","heat index","estrus index","indice de celo","indice celo","heat index","heat idx"]],
   ["dias_ia","Días desde la última inseminación",["dias de la ultima inseminacion","dias de la ultima ia","dias desde la ultima inseminacion","dias desde ia","days after insem"]],
   ["indicador2","Indicador de celo 2",["heat indicator 2","indicador de celo 2","indicador 2"]],
   ["cambio_grupo","Días desde cambio de grupo",["change group","cambio de grupo","dias cambio grupo","dias desde cambio de grupo","cambio grupo"]],
   ["recorte","Días desde recorte de cascos",["hoof trimming","recorte de cascos","recorte cascos","dias desde recorte","despezunado"]],
-  ["dias_celo","Días desde el último celo",["days after heat","dias desde celo","dias ultimo celo","dias desde el ultimo celo","dias del ultimo celo","heat"]],
+  ["dias_celo","Días desde el último celo",["距上次发情","上次发情天数","days since heat","days after heat","dias desde celo","dias ultimo celo","dias desde el ultimo celo","dias del ultimo celo","heat"]],
+  ["temp_corp","Temperatura corporal (°C)",["体温","temperatura","temperatura corporal","body temperature","temp"]],
   ["prep","Preparación al pico (s)",["preparacion","tiempo al pico","segundos al pico","preparacion ordeno","tiempo de preparacion"]]];
 const CAMPO_LBL = Object.fromEntries(CAMPOS.map(c=>[c[0],c[1]]));
 function puntaje(h){
   const n = norm(h); if (!n) return [];
   const out = [];
   CAMPOS.forEach(([f,,kws]) => { let best = 0;
-    kws.forEach(k => { if (n === k) best = Math.max(best, 100 + k.length); else if ((" "+n+" ").includes(" "+k+" ") && k.length >= 2) best = Math.max(best, k.length); });
+    kws.forEach(k => { const cjk = /[\u4e00-\u9fff]/.test(k);
+      if (n === k) best = Math.max(best, 100 + k.length*(cjk?3:1));
+      else if (cjk ? n.includes(k) : ((" "+n+" ").includes(" "+k+" ") && k.length >= 2)) best = Math.max(best, cjk ? k.length*3 : k.length); });
     if (best) out.push([f, best]); });
   return out;
 }
@@ -1254,6 +1258,12 @@ function parseFecha(v){
   if ((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/))){ let y = +m[3]; if (y < 100) y += 2000; const d = +m[1], mo = +m[2]; if (mo > 12) return new Date(y, d-1, mo); return new Date(y, mo-1, d); }
   return null;
 }
+function parseFechaHora(v){
+  if (v instanceof Date) return v;
+  const d = parseFecha(v); if (!d) return null;
+  const m = String(v).match(/(\d{1,2}):(\d{2})/); if (m) d.setHours(+m[1], +m[2], 0, 0);
+  return d;
+}
 function fechaDeNombre(nombre){
   const m = nombre.match(/(\d{1,2})[ _\-.](\d{1,2})[ _\-.](\d{4}|\d{2})(?!\d)/) || nombre.match(/(\d{4})[ _\-.](\d{1,2})[ _\-.](\d{1,2})/);
   if (!m) return null;
@@ -1273,7 +1283,7 @@ function parseCSV(text){
 let xlsxPromesa = null;
 function cargarXLSX(){
   if (window.XLSX) return Promise.resolve();
-  const fuentes = (window.Capacitor ? ["xlsx.full.min.js"] : []).concat(["https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"]);
+  const fuentes = (window.Capacitor || location.protocol === "chrome-extension:" ? ["xlsx.full.min.js"] : []).concat(["https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"]);
   const probar = (i, ok, mal) => { if (i >= fuentes.length){ xlsxPromesa = null; return mal(new Error("sin lector de Excel")); }
     const s = document.createElement("script"); s.src = fuentes[i]; s.onload = () => window.XLSX ? ok() : probar(i+1, ok, mal); s.onerror = () => probar(i+1, ok, mal); document.head.appendChild(s); };
   if (!xlsxPromesa) xlsxPromesa = new Promise((ok, mal) => probar(0, ok, mal));
@@ -1332,6 +1342,9 @@ function normGrupo(g, tieneLeche){
 }
 function normEstado(e){
   const n = norm(e); if (!n) return null;
+  if (/未孕|空怀|未配|空胎|产后|open|not pregnant/.test(n)) return "Abierta";
+  if (/怀孕|已孕|妊娠|孕检阳性|确认怀孕/.test(n)) return "Preñada";
+  if (/已配|配种|输精|待孕检|bred|inseminated/.test(n)) return "Inseminada";
   if (/pre|gest|prenad|p\b|pregnant|confirm/.test(n) && !/no pre|vac/.test(n)) return "Preñada";
   if (/insem|serv|\bia\b|bred|cubierta/.test(n)) return "Inseminada";
   if (/abier|vac|open|vacia|no pre|fresca|parida/.test(n)) return "Abierta";
@@ -1353,8 +1366,10 @@ function construir(){
       const g = k => idx[k] === undefined ? null : r[idx[k]];
       let fecha = idx.fecha !== undefined ? parseFecha(g("fecha")) : null; if (!fecha) fecha = fechaArchivo;
       const key = iso(fecha);
-      if (!regs.has(num)) regs.set(num, {dias:new Map(), snap:{}, snapF:{}});
-      const R = regs.get(num);
+      if (!regs.has(num)) regs.set(num, {dias:new Map(), sueltos:new Map(), snap:{}, snapF:{}});
+      const R0 = regs.get(num);
+      // Tablas leídas de la web sin columna de fecha: su leche y rumia solo se usan si no hay datos con fecha
+      const R = ar.captura && idx.fecha === undefined ? {dias: R0.sueltos} : R0;
       const leche = toNum(g("leche")), md = toNum(g("md")), no = toNum(g("no")), rumia = toNum(g("rumia"));
       if (!isNaN(leche) || !isNaN(md) || !isNaN(no) || !isNaN(rumia)){
         if (!R.dias.has(key)) R.dias.set(key, {leche:null, md:null, no:null, rumia:null, turnos:{}});
@@ -1369,11 +1384,12 @@ function construir(){
         }
         if (!isNaN(rumia)) d.rumia = rumia;
       }
-      ["grupo","del","lact","estado","dias_prenez","servicios","ultima_ia","toro","cc","peso","raza","actividad","nacimiento","edad","tratamiento","prep","inicio_celo","ventana","concepcion","indicador1","indicador2","cambio_grupo","recorte","dias_celo","horas_ia","pico_actividad","pico_rumia","indice_celo","dias_ia"].forEach(k => {
+      ["grupo","del","lact","estado","dias_prenez","servicios","ultima_ia","toro","cc","peso","raza","actividad","nacimiento","edad","tratamiento","prep","inicio_celo","ventana","concepcion","indicador1","indicador2","cambio_grupo","recorte","dias_celo","horas_ia","pico_actividad","pico_rumia","indice_celo","dias_ia","temp_corp"].forEach(k => {
         const v = g(k); if (v == null || v === "") return; const t0 = fecha.getTime();
-        if (R.snapF[k] === undefined || t0 >= R.snapF[k]){ R.snap[k] = v; R.snapF[k] = t0; R.snapH = R.snapH || {}; R.snapH[k] = t.headers[idx[k]]; } });
+        if (R0.snapF[k] === undefined || t0 >= R0.snapF[k]){ R0.snap[k] = v; R0.snapF[k] = t0; R0.snapH = R0.snapH || {}; R0.snapH[k] = t.headers[idx[k]]; } });
     });
   }));
+  regs.forEach(R => { if (!R.dias.size && R.sueltos.size) R.sueltos.forEach((d, k) => R.dias.set(k, d)); });
   const todas = new Set(); regs.forEach(R => R.dias.forEach((d,k) => { if (d.leche != null || d.rumia != null) todas.add(k); }));
   const claves = [...todas].sort().slice(-60);
   const fechasD = claves.map(k => { const [y,m,d] = k.split("-").map(Number); return new Date(y,m-1,d); });
@@ -1392,10 +1408,12 @@ function construir(){
     a.actividad_alta = s.actividad != null && siNo(s.actividad);
     if (s.tratamiento) a.tratamiento = {motivo:String(s.tratamiento), inicio:R.snapF.tratamiento ? dm(new Date(R.snapF.tratamiento)) : null, retiro_dias:0};
     const pr = nu("prep"); if (pr != null) a.prep_s = Math.round(pr);
+    if (nu("temp_corp") != null) a.temp_corp = nu("temp_corp");
     if (s.inicio_celo != null || s.ventana != null || nu("horas_ia") != null){
       const c = {}; const ic = s.inicio_celo;
       const rel = String(ic ?? "").match(/(\d+)\s*d\D*(\d+)\s*h/i) || String(ic ?? "").match(/^(\d+)\s*h/i);
-      if (ic instanceof Date || parseFecha(ic)) c.inicio = ic instanceof Date ? ic : parseFecha(ic);
+      const fh = parseFechaHora(ic);
+      if (fh) c.inicio = fh;
       else if (rel) c.inicio_h = rel.length > 2 ? +rel[1]*24 + +rel[2] : +rel[1];
       else if (typeof ic === "number" && ic >= 0 && ic < 200) c.inicio_h = ic;
       if (s.ventana != null) c.ventana = String(s.ventana);
@@ -1425,6 +1443,21 @@ function construir(){
   cargar({finca: IMP.finca || "Mi finca", fuente:"import", hoy: dmy(hoy), ahora: ahoraImp || null, fechas: fechasD.map(dm), fechasISO: claves, animales,
     crianza_meses:null, fertilidad:null, umbrales: DEMO.umbrales, tablasCrudas});
 }
+/* ================= Tablas capturadas por la extensión de Chrome ================= */
+function importarTablas(lista){
+  IMP.archivos = IMP.archivos.filter(a => !a.captura);
+  lista.forEach((c, i) => { const t = prepararTabla(c.filas, c.hoja || "Página"); if (!t.data.length) return;
+    const f = new Date(c.fecha || Date.now());
+    IMP.archivos.push({nombre: c.nombre || ("Captura " + (i+1)), firma: "captura|" + i + "|" + (c.fecha||""), modificado: +f, fecha: f, fechaDe: "archivo", captura: true, origen: c.url || "", tablas: [t]}); });
+  if (IMP.archivos.length) construir(); render();
+}
+function leerCapturasExtension(){
+  try { if (!(window.chrome && chrome.storage && chrome.storage.local)) return;
+    chrome.storage.local.get(["capturas"], r => { const l = (r && r.capturas) || []; if (l.length){ importarTablas(l); toast(`Listo: ${l.length} tabla${l.length>1?"s":""} de la web.`); } });
+    chrome.storage.onChanged && chrome.storage.onChanged.addListener((ch, area) => { if (area === "local" && ch.capturas) importarTablas(ch.capturas.newValue || []); });
+  } catch(e){}
+}
+
 /* ================= Modo escritorio (Rumia.exe) y modo teléfono (APK) ================= */
 const MOVIL = !!window.Capacitor;
 const ESCRITORIO = {activo:false, carpeta:"", ultima:0, max:120};
@@ -1622,6 +1655,7 @@ cargar(structuredClone(DEMO));
 render();
 iniciarEscritorio();
 cargarClimaVivo();
+leerCapturasExtension();
 </script>
 
 </body>

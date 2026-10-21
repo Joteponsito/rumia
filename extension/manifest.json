@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Rumia - Dos Banderas",
+  "short_name": "Rumia",
+  "version": "0.1.0",
+  "description": "Lee las tablas de su monitoreo web (Fulinks, HerdsMate y otros) y las muestra en Rumia: celos, ventana fértil, salud y producción.",
+  "icons": { "16": "icono16.png", "32": "icono32.png", "48": "icono48.png", "128": "icono128.png" },
+  "action": {
+    "default_title": "Rumia: leer esta página",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icono16.png", "32": "icono32.png" }
+  },
+  "permissions": ["storage", "activeTab", "scripting"]
+}
