@@ -1426,10 +1426,15 @@ function parseFechaHora(v){
   return d;
 }
 function fechaDeNombre(nombre){
-  const m = nombre.match(/(?<!\d)(\d{4})[ _\-.](\d{1,2})[ _\-.](\d{1,2})(?!\d)/) || nombre.match(/(?<!\d)(\d{1,2})[ _\-.](\d{1,2})[ _\-.](\d{4}|\d{2})(?!\d)/);
-  if (!m) return null;
-  if (m[1].length === 4) return new Date(+m[1], +m[2]-1, +m[3]);
-  let y = +m[3]; if (y < 100) y += 2000; if (+m[2] > 12 || +m[1] > 31) return null; return new Date(y, +m[2]-1, +m[1]);
+  // Fecha real del archivo: nunca en el futuro y con mes y día válidos
+  const ok = (y, mo, d) => { if (mo < 1 || mo > 12 || d < 1 || d > 31) return null; const f = new Date(y, mo-1, d);
+    return f.getMonth() === mo-1 && f <= addDays(new Date(), 1) && y >= 2000 ? f : null; };
+  let m, f;
+  if ((m = nombre.match(/(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)/)) && (f = ok(+m[1], +m[2], +m[3]))) return f;
+  if ((m = nombre.match(/(?<!\d)(\d{1,2})[_.\/-](\d{1,2})[_.\/-](\d{4})(?!\d)/)) && (f = ok(+m[3], +m[2], +m[1]))) return f;
+  if ((m = nombre.match(/(?<!\d)(\d{4})[_.](\d{1,2})[_.](\d{1,2})(?!\d)/)) && (f = ok(+m[1], +m[2], +m[3]))) return f;
+  if ((m = nombre.match(/(?<!\d)(\d{1,2})[ _.-](\d{1,2})[ _.-](\d{2})(?![\d-])/)) && (f = ok(2000 + +m[3], +m[2], +m[1]))) return f;
+  return null;
 }
 function parseCSV(text){
   const muestra = text.split(/\r?\n/).slice(0,8).join("\n");
@@ -1534,7 +1539,7 @@ function construir(){
     const filas = t.data.map(r => t.headers.map((_,j) => { const v = r[j]; if (j === idx.fecha || j === idx.ultima_ia || j === idx.nacimiento || j === idx.fecha_parto){ const f = parseFecha(v); return f || v; } return v; }));
     tablasCrudas.push({nombre: ar.nombre + (ar.tablas.length > 1 ? " · " + t.hoja : ""), cols: t.headers, rows: filas, roles});
     // La fecha de una fila solo vale si es cercana a la del archivo (algunos reportes traen fechas viejas por defecto)
-    const filaFecha = r => { if (idx.fecha === undefined) return null; const f = parseFecha(r[idx.fecha]); return f && f <= addDays(ar.fecha, 2) && f >= addDays(ar.fecha, -60) ? f : null; };
+    const filaFecha = r => { if (idx.fecha === undefined) return null; const f = parseFecha(r[idx.fecha]); return f && f <= addDays(ar.fecha, 2) && f <= addDays(new Date(), 1) && f >= addDays(ar.fecha, -60) ? f : null; };
     if (tipo || idx.cond_pct !== undefined || idx.ev_nombre !== undefined || idx.f15 !== undefined || idx.motivo_alerta !== undefined) colectar(COL, tipo, ar, t, idx, filaFecha);
     if (idx.num === undefined || SOLO_SERIE.has(tipo) || idx.ev_nombre !== undefined) return;
     // Los reportes del sistema traen la leche de las últimas 24 horas: es del día anterior al archivo
@@ -2435,7 +2440,7 @@ function guardarArchivos(){
 function restaurarArchivos(){
   try { const raw = localStorage.getItem("rumia.archivos"); if (!raw) return false;
     const fx = v => v && typeof v === "object" && v.$f ? (([d, h]) => { const [y,m,dd] = d.split("-").map(Number); const [hh,mi] = (h||"00:00").split(":").map(Number); return new Date(y, m-1, dd, hh, mi); })(v.$f.split("T")) : v;
-    IMP.archivos = JSON.parse(raw).map(a => ({...a, fecha: fx(a.fecha), tablas: a.tablas.map(t => { const data = t.data.map(r => r.map(fx));
+    IMP.archivos = JSON.parse(raw).map(a => ({...a, fecha: (a.fechaDe === "nombre" && fechaDeNombre(a.nombre)) || (a.fechaDe === "nombre" ? (a.fechaDe = "archivo", new Date(a.modificado || Date.now())) : fx(a.fecha)), tablas: a.tablas.map(t => { const data = t.data.map(r => r.map(fx));
       return t.v ? {...t, data} : prepararTabla([t.headers.map(h => /^Columna \d+$/.test(h) ? null : h), ...data], t.hoja); })}));
     if (!IMP.archivos.length) return false; construir(); return D && D.fuente === "import";
   } catch(e){ return false; }
