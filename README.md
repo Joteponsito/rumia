@@ -1,4 +1,20 @@
-# Rumia para Android
+# Rumia
+
+App lechera de Dos Banderas. La versión web se publica en **Vercel** desde la carpeta `www`: cada cambio que se sube a este repositorio se publica solo.
+
+## Versión web (Vercel)
+
+- `www/index.html`: la app completa en un solo archivo.
+- `www/manifest.webmanifest` y los `icono-*.png`: permiten instalarla en la pantalla del teléfono desde el navegador.
+- `www/vercel.json`: configuración de Vercel (directorio raíz del proyecto: `www`).
+
+## App de Android (en pausa)
+
+La APK ya no se arma en cada cambio. Si se necesita, en la pestaña **Actions** elija el flujo y toque **Run workflow**. Las instrucciones de abajo siguen sirviendo para eso.
+
+---
+
+## Rumia para Android
 
 Este proyecto genera el APK de Rumia en la nube de GitHub, gratis. No hace falta instalar nada en la computadora.
 

@@ -1,8 +1,9 @@
 name: Construir APK y extensión de Rumia
 
+# La app móvil quedó en pausa: la APK ya no se arma en cada cambio.
+# Para armarla a mano: pestaña Actions → este flujo → Run workflow.
 on:
   workflow_dispatch:
-  push:
 
 permissions:
   contents: write
