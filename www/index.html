@@ -1288,7 +1288,7 @@ function abrirFicha(num){
     ${a.fert?`<h2>Ventana de fertilidad</h2><div class="panel">${bloqueFert(a)}</div>`:""}
     ${chartH}${seccionesFichaSistema(a)}${repro}
     ${a.regs && a.regs.length ? `<h2>Anotado <span class="count">${a.regs.length}</span></h2><div class="list">${a.regs.slice().reverse().slice(0,12).map(r=>`<div class="row" style="cursor:default"><span class="tag info" style="min-width:64px;font-size:.8rem">${esc(dm(isoAFecha(r.fecha)))}</span><span class="body"><span class="t">${esc(TIPO_LBL[r.tipo]||r.tipo)}</span><br><span class="s">${esc(textoReg(r)||"—")}${r.quien?" · "+esc(r.quien):""}</span></span></div>`).join("")}</div>` : ""}
-    <div class="actionsrow"><button class="btn" data-anotar-vaca="${esc(a.num)}">Anotar algo de la ${esc(a.num)}</button></div>
+    <div class="actionsrow"><button class="btn" data-anotar-vaca="${esc(a.num)}">Anotar algo de la ${esc(a.num)}</button>${vamppAnimal(a.num) ? `<button class="btn ghost" data-vp-vaca="${esc(a.num)}">Historial de VAMPP</button>` : ""}</div>
   </div></div>`;
   $("#cerrar").focus();
 }
@@ -1478,6 +1478,9 @@ function prepararTabla(rows, hoja){
 // Las fechas vienen como días desde el 31/12/1840.
 const esRespaldoVAMPP = txt => /Respaldo para VAMPP/i.test(txt.slice(0, 600)) || /^\^R\(\d+[,)]/m.test(txt.slice(0, 4000));
 const fechaVAMPP = v => { const n = parseInt(v, 10); return n > 40000 && n < 80000 ? new Date(1840, 11, 31 + n) : null; };
+const isoV = d => d ? iso(d) : null;
+// VAMPP pierde las tildes y la ñ al respaldar; entre dos vocales casi siempre era una ñ (MONTAÑITA, ACUÑA)
+const arreglarÑ = s => String(s ?? "").replace(/ï¿½/g, "�").replace(/([AEIOUaeiou])�(?=[AEIOUaeiou])/g, (m, x) => x + (/[A-Z]/.test(x) ? "Ñ" : "ñ")).trim();
 function leerVAMPP(txt){
   const L = txt.split(/\r?\n/), R = new Map();
   for (let i = 0; i < L.length - 1; i++){
@@ -1491,36 +1494,67 @@ function leerVAMPP(txt){
   const ver = (txt.slice(0, 600).match(/VAMPP[^,\r\n]*/) || [""])[0].trim();
   const fincas = [];
   R.forEach((regs, id) => {
-    const A = new Map(), RAZA = {}; let nombre = "", ultimo = null, ckdb = null;
-    const vaca = n => { if (!A.has(n)) A.set(n, {serv:[], partos:{}, secados:{}, gyn:[], cc:[], ccs:[], leche:[]}); return A.get(n); };
+    const A = new Map(), RAZA = {}, G = {}, TORO = {}, CONT = [], INSEM = [], ENTR = [], SEC = {}, VACD = {}, META = {};
+    let nombre = "", ultimo = null, ckdb = null, ficha = null, agrup = "", area = "", inicio = null;
+    const vaca = n => { if (!A.has(n)) A.set(n, {serv:[], partos:{}, secados:{}, gyn:[], cc:[], ccs:[], leche:[], salud:[], vac:[]}); return A.get(n); };
     const nota = d => { if (d && (!ultimo || d > ultimo)) ultimo = d; return d; };
     regs.forEach(([s, v]) => {
-      const p = String(v ?? "").split("|");
-      if (!s.length){ nombre = (p[0] || "").replace(/^ENTREGA\d*\s*/i, "").replace(/\uFFFD|ï¿½/g, (m, i, t) => /[A-Z]/.test(t[i - 1] || "") ? "Ñ" : "ñ").trim(); return; }
-      if (s[0] === "BREED" && s.length === 2) RAZA[s[1]] = v;
-      if (s[0] === "CKDB") ckdb = fechaVAMPP(v);
-      if (s[0] !== "H" || s.length < 2) return;
+      v = String(v ?? ""); const p = v.split("|");
+      if (!s.length){ ficha = p; nombre = arreglarÑ(p[0]).replace(/^ENTREGA\d*\s*/i, ""); return; }
+      const t = s[0];
+      if (t === "BREED" && s.length === 2) RAZA[s[1]] = v;
+      else if (t === "CKDB") ckdb = fechaVAMPP(v);
+      else if (t === "AGRUPACION") agrup = v;
+      else if (t === "AREA") area = v;
+      else if (t === "BEGIN") inicio = fechaVAMPP(v);
+      else if (t === "GAUGES" && s.length === 2) G[s[1]] = v;
+      else if (t === "TORO" && s.length === 2) TORO[s[1]] = p;
+      else if (t === "BUYSELL" && s.length === 2) CONT.push({nombre: arreglarÑ(p[1]), dir: arreglarÑ(p[2]), tel: p[3] || ""});
+      else if (t === "INSEM" && s.length === 2) INSEM.push({nombre: arreglarÑ(p[0]), ced: p[1] || "", desde: isoV(fechaVAMPP(p[2]))});
+      else if (t === "MILKFARM" && s.length === 2) ENTR.push({cod: s[1], nombre: arreglarÑ(p[0])});
+      else if (t === "DRYDEF" && s[1] === "PRODUCTS" && s.length === 3) SEC[s[2]] = SEC[s[2]] || [];
+      else if (t === "DRYDEF" && s[1] === "PRODUCTS" && s.length === 5 && s[3] === "PA") (SEC[s[2]] = SEC[s[2]] || []).push(s[4].trim() + (p[0] ? " (" + p[0] + ")" : ""));
+      else if (t === "VACDEF" && s[1] === "PRODUCTS" && s.length === 3) VACD[s[2]] = VACD[s[2]] || [];
+      else if (t === "VACDEF" && s[1] === "PRODUCTS" && s.length === 5 && s[3] === "PA") (VACD[s[2]] = VACD[s[2]] || []).push(s[4].trim());
+      else if (t === "TARG" && s.length === 3 && /^\d+$/.test(s[2])) (META[s[1]] = META[s[1]] || {})[s[2]] = {lbl: v, num: null};
+      else if (t === "TARG" && s.length === 4 && s[3] === "NUM"){ const m = (META[s[1]] = META[s[1]] || {}); (m[s[2]] = m[s[2]] || {lbl: ""}).num = v; }
+      if (t !== "H" || s.length < 2) return;
       const a = vaca(s[1]);
       if (s.length === 2) a.reg = p;
       else if (s.length === 3 && s[2] === "0") a.lact = parseInt(v, 10) || 0;
-      else if (s.length === 3 && /^\d+\.1$/.test(s[2])) a.partos[parseInt(s[2], 10)] = {f: nota(fechaVAMPP(p[0])), sexo: p[1]};
-      else if (s.length === 3 && /^\d+\.2$/.test(s[2])) a.secados[parseInt(s[2], 10)] = nota(fechaVAMPP(p[0]));
+      else if (s.length === 3 && /^\d+\.1$/.test(s[2])) a.partos[parseInt(s[2], 10)] = {f: nota(fechaVAMPP(p[0])), sexo: p[1], cria: p[5] || ""};
+      else if (s.length === 3 && /^\d+\.2$/.test(s[2])) a.secados[parseInt(s[2], 10)] = {f: nota(fechaVAMPP(p[0])), prod: p[1] || "", nota: arreglarÑ(p[2])};
       else if (s.length === 4 && /^\d+$/.test(s[2]) && /^\d+$/.test(s[3])) a.serv.push({lact: +s[2], f: nota(fechaVAMPP(s[3])), toro: p[0], fd: fechaVAMPP(p[2]), res: p[3]});
-      else if (s.length === 4 && s[2] === "GYN") a.gyn.push({f: nota(fechaVAMPP(s[3])), cod: p[0], nota: p[3], dias: p[4]});
+      else if (s.length === 4 && s[2] === "GYN") a.gyn.push({f: nota(fechaVAMPP(s[3])), cod: p[0], nota: arreglarÑ(p[3]), dias: p[4]});
       else if (s.length === 4 && s[2] === "CSCORE") a.cc.push({f: fechaVAMPP(s[3]), v: parseFloat(v)});
       else if (s.length === 4 && s[2] === "SOMCEL") a.ccs.push({f: fechaVAMPP(s[3]), v: parseFloat(v)});
       else if (s.length === 4 && s[2] === "PROEFM") a.leche.push({f: nota(fechaVAMPP(s[3])), v: parseFloat(p[0])});
+      else if (s.length === 4 && s[2] === "ZIEK") a.salud.push({f: nota(fechaVAMPP(s[3])), tipo: p[0], cuartos: p[1] || "", prod: arreglarÑ(p[6])});
+      else if (s.length === 5 && s[2] === "VAC") a.vac.push({f: fechaVAMPP(s[4]), vac: s[3]});
     });
-    // Los días se cuentan al último dato anotado en VAMPP, no al día del respaldo
-    const ref = ultimo || ckdb || fecha || new Date();
+    const ref = ultimo || ckdb || fecha || new Date(); // los días se cuentan al último dato anotado en VAMPP
+    const raza = c => { const k = String(c || "").replace(/\d+$/, ""); return RAZA[k] || c || null; };
     const headers = ["Vaca","Identificación VAMPP","Fecha de nacimiento","Raza","Lactancia","Grupo","Fecha ultimo parto","Estado reproductivo","Servicios","Ultima IA","Toro","Dias de prenez","Parto esperado","Fecha de secado","Condicion corporal","Fecha de la ultima condicion corporal","Celulas somaticas","Fecha prueba","Leche ultimo control (kg)","Fecha ultimo control"];
-    const data = []; let total = 0;
+    const data = [], anim = {}; let total = 0;
+    const ord = l => l.filter(x => x.f).sort((x, y) => x.f - y.f);
     A.forEach((a, num) => {
       const p = a.reg; if (!p) return; total++;
-      if (p[6] || p[9]) return; // salió de la finca o murió
-      const nac = fechaVAMPP(p[0]), lact = a.lact || 0, cod = String(p[3] || "").replace(/\d+$/, "");
+      const nac = fechaVAMPP(p[0]), lact = a.lact || 0;
+      const baja = p[6] || p[9] ? {f: isoV(fechaVAMPP(p[9] || p[6])), tipo: p[9] ? "Muerte o descarte" : "Salida", motivo: arreglarÑ(p[9] ? p[10] : p[8]) || arreglarÑ(p[8])} : null;
+      // Historial completo, en arreglos cortos para que quepa en el equipo
+      anim[num] = {ident: arreglarÑ(p[5]), nac: isoV(nac), padre: p[1] || "", madre: arreglarÑ(p[2]), raza: raza(p[3]), reg: p[4] || "", lact, baja,
+        partos: Object.entries(a.partos).filter(([, x]) => x.f).map(([k, x]) => [+k, isoV(x.f), x.sexo, x.cria]).sort((x, y) => x[1].localeCompare(y[1])),
+        serv: ord(a.serv).map(x => [x.lact, isoV(x.f), x.toro, isoV(x.fd), x.res]),
+        gyn: ord(a.gyn).map(x => [isoV(x.f), x.cod, x.nota, x.dias]),
+        sec: Object.entries(a.secados).filter(([, x]) => x.f).map(([k, x]) => [+k, isoV(x.f), x.prod, x.nota]).sort((x, y) => x[1].localeCompare(y[1])),
+        leche: ord(a.leche).filter(x => !isNaN(x.v)).map(x => [isoV(x.f), x.v]),
+        ccs: ord(a.ccs).filter(x => !isNaN(x.v)).map(x => [isoV(x.f), x.v]),
+        cc: ord(a.cc).filter(x => !isNaN(x.v)).map(x => [isoV(x.f), x.v]),
+        salud: ord(a.salud).map(x => [isoV(x.f), x.tipo, x.cuartos, x.prod]),
+        vac: ord(a.vac).map(x => [isoV(x.f), x.vac])};
+      if (baja) return; // salió de la finca o murió: queda en el historial, no en el hato
       const parto = a.partos[lact] ? a.partos[lact].f : null;
-      const secado = a.secados[lact] && (!parto || a.secados[lact] >= parto) ? a.secados[lact] : null;
+      const secado = a.secados[lact] && a.secados[lact].f && (!parto || a.secados[lact].f >= parto) ? a.secados[lact].f : null;
       const serv = a.serv.filter(x => x.lact === lact + 1 && x.f && (!parto || x.f > parto)).sort((x, y) => x.f - y.f);
       const ult = serv[serv.length - 1];
       let estado = lact ? "Abierta" : null;
@@ -1531,15 +1565,23 @@ function leerVAMPP(txt){
       const edad = nac ? (ref - nac) / 864e5 : null;
       const grupo = lact ? (secado ? "Seca" : "Ordeño") : edad != null && edad < 365 ? "Ternera" : "Novilla";
       const fs = secado || (pe && lact ? addDays(pe, -60) : null);
-      const cc = a.cc.sort((x, y) => x.f - y.f).pop(), ccs = a.ccs.sort((x, y) => x.f - y.f).pop();
-      const lec = grupo === "Ordeño" ? a.leche.filter(x => !parto || x.f >= parto).sort((x, y) => x.f - y.f).pop() : null;
-      data.push([num, (p[5] || "").trim() || null, nac, RAZA[cod] || p[3] || null, lact, grupo, parto, estado, serv.length || (lact ? 0 : null),
+      const cc = ord(a.cc).pop(), ccs = ord(a.ccs).pop();
+      const lec = grupo === "Ordeño" ? ord(a.leche).filter(x => !parto || x.f >= parto).pop() : null;
+      data.push([num, arreglarÑ(p[5]) || null, nac, raza(p[3]), lact, grupo, parto, estado, serv.length || (lact ? 0 : null),
         ult ? ult.f : null, ult ? ult.toro : null, dp, pe, fs, cc ? cc.v : null, cc ? cc.f : null, ccs ? ccs.v : null, ccs ? ccs.f : null,
         lec && !isNaN(lec.v) ? lec.v : null, lec ? lec.f : null]);
     });
-    if (!data.length && !total) return;
+    if (!total) return;
     data.sort((x, y) => (+x[0] || 0) - (+y[0] || 0));
-    fincas.push({id, nombre, ultimo, headers, data, total});
+    const fi = ficha || [];
+    const hist = {v: 1, ultimo: isoV(ultimo), animales: anim,
+      finca: {nombre, dir: arreglarÑ(fi[1]), ciudad: arreglarÑ(fi[2]), tel: fi[3] || "", propietario: arreglarÑ(fi[11]).replace(/\s*ENTRGA.*$/i, ""),
+        email: fi.find(x => /@/.test(x)) || "", agrupacion: agrup, area, inicio: isoV(inicio)},
+      indicadores: G, contactos: CONT, inseminadores: INSEM, entregas: ENTR,
+      secado: Object.entries(SEC).map(([k, l]) => ({prod: k, pa: l})), vacunas: Object.entries(VACD).map(([k, l]) => ({prod: k, pa: l})),
+      metas: Object.entries(META).flatMap(([c, m]) => Object.entries(m).map(([i, x]) => ({cat: c, i: +i, lbl: x.lbl, num: x.num}))),
+      toros: Object.entries(TORO).map(([k, p]) => ({id: k, nombre: arreglarÑ(p[5]), padre: p[1] || "", raza: raza(p[3]), reg: p[4] || "", nac: isoV(fechaVAMPP(p[0]))}))};
+    fincas.push({id, nombre, ultimo, headers, data, total, hist});
   });
   return {fecha: fecha || [...fincas.map(f => f.ultimo)].filter(Boolean).sort((a, b) => b - a)[0] || new Date(), version: ver, fincas};
 }
@@ -1563,7 +1605,7 @@ async function leerRespaldoVAMPP(f, firma){
   IMP.archivos = IMP.archivos.filter(a => !a.vampp);
   r.fincas.forEach(fi => IMP.archivos.push({nombre: `Respaldo VAMPP · Finca ${fi.id}`, firma: firma + "|vampp" + fi.id, modificado: f.lastModified,
     fecha: fi.ultimo || r.fecha, fechaDe: "respaldo",
-    vampp: {finca: fi.id, nombre: fi.nombre, total: fi.total, activos: fi.data.length, respaldo: iso(r.fecha), version: r.version, archivo: f.name},
+    vampp: {finca: fi.id, nombre: fi.nombre, total: fi.total, activos: fi.data.length, respaldo: iso(r.fecha), version: r.version, archivo: f.name, hist: fi.hist},
     tablas: [{hoja: `Finca ${fi.id}`, filaTitulos: 1, headers: fi.headers, data: fi.data, v: 2,
       map: Object.fromEntries(fi.headers.map((_, j) => [j, MAPA_VAMPP[j] || ""]))}]}));
   return r;
@@ -2585,8 +2627,8 @@ const ICON = {mas:'<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><cir
   ordeno:'<svg viewBox="0 0 24 24"><path d="M9 3h6l-1 4v2.5c2.4 1 4 3.4 4 6.2V21H6v-5.3c0-2.8 1.6-5.2 4-6.2V7z"/><path d="M6 15h12"/></svg>'};
 let MOSTRAR_ASIST = store.get("asist", true);
 const TABS = () => [["hoy","Hoy",pantallaHoy],["vacas","Vacas",pantallaVacas],["repro","Repro",pantallaRepro],["crianza","Crianza",pantallaCrianza],["mas","Más",pantallaMas]];
-const PANTALLAS = () => [...TABS(), ["graficos","Análisis",pantallaExplorar], ["asistente","Asistente",pantallaAsistente], ["datos","Datos",pantallaDatos], ["ordeno","Ordeño",pantallaOrdeno], ["calor","Calor",pantallaCalor], ["anotar","Anotar",pantallaAnotar]];
-const EN_MAS = ["mas","graficos","asistente","datos","ordeno"];
+const PANTALLAS = () => [...TABS(), ["graficos","Análisis",pantallaExplorar], ["asistente","Asistente",pantallaAsistente], ["datos","Datos",pantallaDatos], ["ordeno","Ordeño",pantallaOrdeno], ["calor","Calor",pantallaCalor], ["anotar","Anotar",pantallaAnotar], ["vampp","VAMPP",pantallaVAMPP]];
+const EN_MAS = ["mas","graficos","asistente","datos","ordeno","vampp"];
 /* ================= Ordeño y calidad de leche (reportes del sistema de ordeño) ================= */
 function datosOrdeno(){
   const A = D.afi || {};
@@ -2688,13 +2730,211 @@ function seccionesFichaSistema(a){
   return h;
 }
 
+ICON.vampp = '<svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"/><path d="M8 3v4M16 3v4M4 10h16M8 14h3M8 17h6"/></svg>';
+/* ================= Historial de VAMPP: un apartado por cada cosa, con filtros y límites ================= */
+const VP = {ap: "resumen", vaca: "", sel: "", n: 50, per: {}};
+const VP_PER = {resumen: 12, partos: 12, serv: 12, gyn: 12, sec: 12, leche: 3, ccs: 12, cc: 12, salud: 24, vac: 0, bajas: 0, toros: 0};
+const VP_APS = [["resumen","Resumen"],["vaca","Vaca por vaca"],["partos","Partos"],["serv","Servicios"],["gyn","Palpaciones"],["sec","Secados"],
+  ["leche","Controles de leche"],["ccs","Células somáticas"],["cc","Condición corporal"],["salud","Mastitis y salud"],["vac","Vacunas"],["bajas","Bajas"],["toros","Toros"],["finca","Finca"]];
+function vamppHist(){ const {sel} = vamppElegido(); return sel && sel.vampp && sel.vampp.hist ? {H: sel.vampp.hist, v: sel.vampp} : null; }
+const vamppAnimal = num => { const h = vamppHist(); return h && h.H.animales[String(num)] ? h.H.animales[String(num)] : null; };
+const fV = s => s ? dmy(isoAFecha(s)) : "—";
+const COD_GYN = c => /^DP\.1$/.test(c) ? "Palpación: preñada" : /^DP\.11$/.test(c) ? "Palpación: vacía" : /^DP\.4$/.test(c) ? "Celo" : /^DP\.61$/.test(c) ? "Aborto"
+  : /^RPP/.test(c) ? "Revisión posparto" : /^CNO/.test(c) ? "Chequeo de ovarios y útero" : /^DV/.test(c) ? "Tratamiento uterino" : "Examen";
+const SEXO = s => s === "H" ? "Hembra" : s === "M" ? "Macho" : s === "D" ? "Muerta o sin dato" : s || "—";
+const RES = r => r === "+" ? "Preñó" : r === "-" ? "No preñó" : "Sin diagnóstico";
+const SALUD = t => t === "M" ? "Mastitis" : t || "—";
+const cuartos = c => { const p = String(c || "").split(","); const l = p.map((x, i) => x ? i + 1 : 0).filter(Boolean); return l.length ? "cuarto " + l.join(" y ") : "—"; };
+const META_CAT = {CALV:"Partos", CULL:"Descarte", INSI:"Inseminación", INSP:"Preñez", LAME:"Cojeras", NUTR:"Nutrición", UDDER:"Ubre", YOUNG:"Crianza", OTHER:"Otros", PROEFM:"Producción"};
+const VAMPP_IND = {EPP:["Edad al primer parto","meses"], IEP:["Intervalo entre partos","días"], IPC:["Días abiertos (parto a preñez)","días"], TDC:["Tasa de concepción","%"],
+  TP:["Tasa de preñez","%"], KGVDAY:["Leche por vaca al día","kg"], KGENTDAY:["Leche entregada al día","kg"]};
+function nombreToro(H, c){ const t = H.toros.find(x => x.id === c); return t && t.nombre ? c + " · " + t.nombre : c || "—"; }
+// Lactancia en la que estaba la vaca en una fecha: último parto antes de esa fecha
+function delEn(a, f){ let p = null; a.partos.forEach(x => { if (x[1] <= f) p = x[1]; }); return p ? Math.round((isoAFecha(f) - isoAFecha(p)) / 864e5) : null; }
+function resultadoServ(a, i){
+  const s = a.serv[i], sig = a.serv.slice(i + 1).some(x => x[0] === s[0]);
+  if (sig) return "-";
+  if (a.partos.some(p => p[0] === s[0])) return "+";
+  return s[4] === "+" && s[3] ? "+" : s[4] === "-" ? "-" : "";
+}
+function vpFilas(H, ap){
+  const out = [];
+  Object.entries(H.animales).forEach(([num, a]) => {
+    if (ap === "partos") a.partos.forEach(x => out.push({f: x[1], num, c: [x[0], SEXO(x[2]), x[3] || "—"]}));
+    if (ap === "serv") a.serv.forEach((x, i) => { const r = resultadoServ(a, i); out.push({f: x[1], num, c: [x[0] - 1, nombreToro(H, x[2]), RES(r), fV(x[3])], res: r}); });
+    if (ap === "gyn") a.gyn.forEach(x => out.push({f: x[0], num, c: [COD_GYN(x[1]), x[1], x[2] || "—", x[3] || "—"]}));
+    if (ap === "sec") a.sec.forEach(x => out.push({f: x[1], num, c: [x[0], x[2] || "—", x[3] || "—"]}));
+    if (ap === "leche") a.leche.forEach(x => out.push({f: x[0], num, kg: x[1], c: [n1(x[1]) + " kg", delEn(a, x[0]) ?? "—"]}));
+    if (ap === "ccs") a.ccs.forEach(x => out.push({f: x[0], num, v: x[1], c: [n0(x[1]) + " mil", x[1] > 200 ? "Alta" : "Normal"]}));
+    if (ap === "cc") a.cc.forEach(x => out.push({f: x[0], num, c: [String(x[1]).replace(".", ",")]}));
+    if (ap === "salud") a.salud.forEach(x => out.push({f: x[0], num, c: [SALUD(x[1]), cuartos(x[2]), x[3] || "—"]}));
+    if (ap === "vac") a.vac.forEach(x => out.push({f: x[0], num, c: [x[1]]}));
+    if (ap === "bajas" && a.baja) out.push({f: a.baja.f, num, c: [a.ident || "—", a.baja.tipo, a.baja.motivo || "—"]});
+  });
+  return out;
+}
+const VP_COLS = {partos:["Lactancia","Cría","No. de la cría"], serv:["Lactancia","Toro","Resultado","Diagnóstico"], gyn:["Examen","Código","Nota","Días"],
+  sec:["Lactancia","Producto","Nota"], leche:["Leche","Días en leche"], ccs:["Células","Nivel"], cc:["Condición"], salud:["Problema","Cuartos","Producto o diagnóstico"],
+  vac:["Vacuna"], bajas:["Identificación","Tipo","Motivo"]};
+const VP_DESC = {partos:"Cada parto con el sexo de la cría.", serv:"Cada inseminación o monta, con el toro y si preñó.", gyn:"Palpaciones, revisiones posparto, chequeos y tratamientos uterinos.",
+  sec:"Cada secado con el producto usado.", leche:"Pesajes del control lechero, vaca por vaca.", ccs:"Conteos de células somáticas por vaca. Más de 200 mil es alto.",
+  cc:"Calificaciones de condición corporal.", salud:"Mastitis y otros problemas anotados, con el cuarto y el producto.", vac:"Vacunas aplicadas.",
+  bajas:"Animales que salieron de la finca: traslados, ventas, muertes y robos."};
+function vpDesde(H, ap){ const m = VP.per[ap] ?? VP_PER[ap] ?? 12; if (!m || !H.ultimo) return null; const d = isoAFecha(H.ultimo); d.setMonth(d.getMonth() - m); return iso(d); }
+function vpFiltros(H, ap, conVaca = true){
+  const m = VP.per[ap] ?? VP_PER[ap] ?? 12;
+  return `<div class="form" style="margin:10px 0">${conVaca ? `<label>Vaca<input class="field" id="vp-filtro" inputmode="numeric" placeholder="Todas" value="${esc(VP.vaca)}"></label>` : ""}
+    <label>Período<select class="field" id="vp-per">${[[3,"Últimos 3 meses"],[6,"Últimos 6 meses"],[12,"Últimos 12 meses"],[24,"Últimos 2 años"],[0,"Todo"]].map(([v, l]) => `<option value="${v}" ${v === m ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
+    ${H.ultimo ? `<p class="note" style="margin-top:0">Los períodos se cuentan hacia atrás desde el último dato del respaldo, el ${fV(H.ultimo)}.</p>` : ""}`;
+}
+function vpTabla(cols, filas, total){
+  if (!filas.length) return `<div class="panel"><p class="note" style="margin:0">No hay registros con ese filtro.</p></div>`;
+  const ver = filas.slice(0, VP.n);
+  return `<div class="tablewrap"><table class="t"><thead><tr><th>Fecha</th><th>Vaca</th>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>
+    ${ver.map(r => `<tr><td>${fV(r.f)}</td><td><button class="mini" data-vp-vaca="${esc(r.num)}">${esc(r.num)}</button></td>${r.c.map(x => `<td>${esc(String(x))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    <p class="note">Mostrando ${n0(ver.length)} de ${n0(total)}.</p>
+    ${filas.length > VP.n ? `<div class="actionsrow"><button class="btn ghost" data-vp-mas="1">Ver ${Math.min(50, filas.length - VP.n)} más</button></div>` : ""}`;
+}
+const vpFiltras = (H, ap) => vpFilas(H, ap).filter(r => r.f && (!VP.vaca || r.num === VP.vaca));
+function vpLista(H, ap){
+  const desde = vpDesde(H, ap);
+  let filas = vpFilas(H, ap).filter(r => r.f && (!desde || r.f > desde) && (!VP.vaca || r.num === VP.vaca)).sort((x, y) => y.f.localeCompare(x.f) || (+x.num - +y.num));
+  let extra = "";
+  if (ap === "leche" && filas.length){ const p = filas.reduce((s, r) => s + r.kg, 0) / filas.length; extra = `<div class="kpis"><div class="kpi"><div class="label">Pesajes</div><div class="v">${n0(filas.length)}</div></div><div class="kpi"><div class="label">Promedio</div><div class="v">${n1(p)} kg</div></div></div>`; }
+  if (ap === "serv" && filas.length){ const d = filas.filter(r => r.res === "+" || r.res === "-"); const pr = d.filter(r => r.res === "+").length;
+    extra = `<div class="kpis"><div class="kpi"><div class="label">Servicios</div><div class="v">${n0(filas.length)}</div></div><div class="kpi"><div class="label">Concepción</div><div class="v">${d.length ? Math.round(100 * pr / d.length) + " %" : "—"}</div><div class="d">${pr} de ${d.length} con diagnóstico</div></div></div>`; }
+  if (ap === "ccs" && filas.length){ const al = filas.filter(r => r.v > 200).length; extra = `<div class="kpis"><div class="kpi"><div class="label">Pruebas</div><div class="v">${n0(filas.length)}</div></div><div class="kpi"><div class="label">Altas (más de 200 mil)</div><div class="v">${Math.round(100 * al / filas.length)} %</div></div></div>`; }
+  if (ap === "bajas" && filas.length){ const c = {}; filas.forEach(r => { const k = r.c[2] && r.c[2] !== "—" ? r.c[2] : r.c[1]; c[k] = (c[k] || 0) + 1; });
+    extra = `<div class="panel"><div class="label">Por motivo</div><p style="margin:6px 0 0">${Object.entries(c).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${esc(k)}: <b>${n}</b>`).join(" · ")}</p></div>`; }
+  if (!filas.length){ const todas = vpFiltras(H, ap); if (todas.length){ const ult = todas.reduce((m, r) => r.f > m ? r.f : m, "");
+    return `<p class="lead">${esc(VP_DESC[ap])}</p>${vpFiltros(H, ap)}<div class="panel"><p style="margin:0 0 10px">No hay registros en este período. Hay ${n0(todas.length)} en total; el último es del ${fV(ult)}.</p>
+      <div class="actionsrow" style="margin-top:0"><button class="btn ghost" data-vp-todo="1">Ver todo</button></div></div>`; } }
+  return `<p class="lead">${esc(VP_DESC[ap])}</p>${vpFiltros(H, ap)}${extra}${vpTabla(VP_COLS[ap], filas, filas.length)}`;
+}
+// Indicadores calculados con el historial, en el período elegido
+function vpIndicadores(H, desde){
+  const enP = f => f && (!desde || f > desde);
+  let epp = [], iep = [], da = [], sxp = [], pri = [0, 0], abortos = 0, partos = 0, hembras = 0, mast = 0;
+  Object.values(H.animales).forEach(a => {
+    a.partos.forEach((p, i) => { if (!enP(p[1])) return; partos++; if (p[2] === "H") hembras++;
+      if (p[0] === 1 && a.nac) epp.push((isoAFecha(p[1]) - isoAFecha(a.nac)) / 864e5 / 30.4);
+      const ant = a.partos[i - 1]; if (ant) iep.push((isoAFecha(p[1]) - isoAFecha(ant[1])) / 864e5); });
+    const porL = {}; a.serv.forEach((s, i) => (porL[s[0]] = porL[s[0]] || []).push([...s.slice(0, 4), resultadoServ(a, i)]));
+    Object.entries(porL).forEach(([l, ss]) => { ss.sort((x, y) => x[1].localeCompare(y[1]));
+      const f1 = ss[0]; if (enP(f1[1]) && f1[4]){ pri[1]++; if (f1[4] === "+") pri[0]++; }
+      const c = ss[ss.length - 1]; if (c[4] !== "+" || !enP(c[1])) return;
+      sxp.push(ss.length);
+      const parto = a.partos.find(p => p[0] === +l - 1); if (parto && c[1] > parto[1]) da.push((isoAFecha(c[1]) - isoAFecha(parto[1])) / 864e5); });
+    a.gyn.forEach(g => { if (enP(g[0]) && (g[1] === "DP.61" || /aborto/i.test(g[2]))) abortos++; });
+    a.salud.forEach(s => { if (enP(s[0]) && s[1] === "M") mast++; });
+  });
+  const prom = l => l.length ? l.reduce((s, x) => s + x, 0) / l.length : null;
+  return [["Partos", n0(partos), hembras ? `${Math.round(100 * hembras / partos)} % hembras` : ""],
+    ["Edad al primer parto", epp.length ? n1(prom(epp)) + " meses" : "—", `${epp.length} novillas · meta 24 a 26`],
+    ["Intervalo entre partos", iep.length ? n0(prom(iep)) + " días" : "—", `${iep.length} vacas · meta 365 a 400`],
+    ["Días abiertos", da.length ? n0(prom(da)) + " días" : "—", `${da.length} preñeces · meta menos de 120`],
+    ["Servicios por preñez", sxp.length ? n1(prom(sxp)) : "—", `${sxp.length} preñeces · meta menos de 2`],
+    ["Preñez al primer servicio", pri[1] ? Math.round(100 * pri[0] / pri[1]) + " %" : "—", `${pri[1]} primeros servicios con diagnóstico`],
+    ["Abortos", n0(abortos), ""], ["Casos de mastitis", n0(mast), ""]];
+}
+function vpResumen(H, v){
+  const desde = vpDesde(H, "resumen"), A = Object.values(H.animales);
+  const act = A.filter(a => !a.baja).length, bajas = A.filter(a => a.baja && (!desde || (a.baja.f || "") > desde)).length;
+  const ind = vpIndicadores(H, desde);
+  // Partos por mes y leche promedio por mes, últimos 24 meses del respaldo
+  const meses = []; if (H.ultimo){ const d = isoAFecha(H.ultimo); d.setDate(1); for (let i = 23; i >= 0; i--){ const x = new Date(d); x.setMonth(x.getMonth() - i); meses.push(iso(x).slice(0, 7)); } }
+  const pm = Object.fromEntries(meses.map(m => [m, 0])), lm = Object.fromEntries(meses.map(m => [m, []]));
+  A.forEach(a => { a.partos.forEach(p => { const m = p[1].slice(0, 7); if (m in pm) pm[m]++; }); a.leche.forEach(x => { const m = x[0].slice(0, 7); if (m in lm) lm[m].push(x[1]); }); });
+  const lbl = meses.map(m => { const [y, mo] = m.split("-"); return mo + "/" + y.slice(2); });
+  const leche = meses.map(m => lm[m].length ? Math.round(10 * lm[m].reduce((s, x) => s + x, 0) / lm[m].length) / 10 : null);
+  const G = Object.entries(H.indicadores || {}).filter(([k, x]) => VAMPP_IND[k] && x !== "" && x !== "0");
+  return `<p class="lead">${act} animales activos y ${A.length - act} que ya salieron. Indicadores calculados con el historial del respaldo.</p>
+    ${vpFiltros(H, "resumen", false)}
+    <div class="kpis">${ind.map(([k, x, d]) => `<div class="kpi"><div class="label">${esc(k)}</div><div class="v">${esc(x)}</div>${d ? `<div class="d">${esc(d)}</div>` : ""}</div>`).join("")}
+      <div class="kpi"><div class="label">Bajas</div><div class="v">${n0(bajas)}</div></div></div>
+    ${meses.length ? `<h2>Partos por mes</h2><div class="panel">${chart({type:"bar", labels: lbl, full: lbl, series:[{name:"Partos", data: meses.map(m => pm[m]), color:"var(--accent)"}], unit:"", h:150, aria:"Partos por mes"})}</div>
+    <h2>Leche promedio por control</h2><div class="panel">${chart({type:"line", labels: lbl, full: lbl, series:[{name:"Leche", data: leche, color:"var(--accent)", fill:true}], unit:"kg", h:160, aria:"Leche promedio por vaca en cada control"})}</div>` : ""}
+    ${G.length ? `<h2>Lo que calculó VAMPP</h2><div class="panel"><div class="tablewrap" style="margin-top:0"><table class="t"><tbody>${G.map(([k, x]) => `<tr><td>${esc(VAMPP_IND[k][0])}</td><td><b>${esc(String(x).replace(".", ","))}</b> ${esc(VAMPP_IND[k][1])}</td></tr>`).join("")}</tbody></table></div>
+      <p class="note">Son los valores que VAMPP tenía guardados al hacer el respaldo.</p></div>` : ""}`;
+}
+function vpVaca(H){
+  const nums = Object.keys(H.animales).sort((a, b) => (+a || 0) - (+b || 0));
+  const sel = VP.sel && H.animales[VP.sel] ? VP.sel : "";
+  const buscar = `<div class="form" style="margin:10px 0"><label>Número de vaca<input class="field" id="vp-sel" list="vp-nums" inputmode="numeric" placeholder="Escriba el número" value="${esc(sel || VP.sel)}"></label></div>
+    <datalist id="vp-nums">${nums.map(n => `<option value="${esc(n)}">${esc(H.animales[n].ident || "")}</option>`).join("")}</datalist>`;
+  if (!sel) return `<p class="lead">Toda la historia de una vaca: partos, servicios, palpaciones, secados, leche, células, salud y vacunas.</p>${buscar}${VP.sel ? `<p class="note">No encontré la vaca ${esc(VP.sel)} en el respaldo.</p>` : ""}`;
+  const a = H.animales[sel], hoyR = H.ultimo ? isoAFecha(H.ultimo) : new Date();
+  const edad = a.nac ? Math.round((hoyR - isoAFecha(a.nac)) / 864e5 / 30.4) : null;
+  const facts = [["Identificación", a.ident || "—"], ["Nacimiento", fV(a.nac) + (edad != null && !a.baja ? ` (${edad} meses)` : "")], ["Raza", a.raza || "—"], ["Lactancias", a.lact],
+    ["Padre", nombreToro(H, a.padre)], ["Madre", a.madre || "—"], ["Registro", a.reg || "—"], ["Situación", a.baja ? `${a.baja.tipo} el ${fV(a.baja.f)}${a.baja.motivo ? ": " + a.baja.motivo : ""}` : "En la finca"]];
+  const ev = [];
+  a.partos.forEach(x => ev.push([x[1], "Parto", `Lactancia ${x[0]} · ${SEXO(x[2])}${x[3] ? " · cría " + x[3] : ""}`]));
+  a.serv.forEach((x, i) => ev.push([x[1], "Servicio", `${nombreToro(H, x[2])} · ${RES(resultadoServ(a, i))}${x[3] ? " (diagnóstico " + fV(x[3]) + ")" : ""}`]));
+  a.gyn.forEach(x => ev.push([x[0], COD_GYN(x[1]), [x[2], x[3] ? x[3] + " días" : ""].filter(Boolean).join(" · ") || x[1]]));
+  a.sec.forEach(x => ev.push([x[1], "Secado", x[2] + (x[3] ? " · " + x[3] : "")]));
+  a.salud.forEach(x => ev.push([x[0], SALUD(x[1]), [cuartos(x[2]), x[3]].filter(y => y && y !== "—").join(" · ")]));
+  a.vac.forEach(x => ev.push([x[0], "Vacuna", x[1]]));
+  a.ccs.forEach(x => ev.push([x[0], "Células somáticas", n0(x[1]) + " mil"]));
+  a.cc.forEach(x => ev.push([x[0], "Condición corporal", String(x[1]).replace(".", ",")]));
+  if (a.baja) ev.push([a.baja.f, a.baja.tipo, a.baja.motivo || ""]);
+  ev.sort((x, y) => (y[0] || "").localeCompare(x[0] || ""));
+  const L = a.leche.slice(-24);
+  return `${buscar}<div class="panel"><div class="sheet-head" style="margin:0 0 8px"><span class="num">${esc(sel)}</span><span style="flex:1"><b>${esc(a.ident || "")}</b></span>
+      ${ANIM.some(x => x.num === sel) ? `<button class="mini" data-vaca="${esc(sel)}">Ficha en Rumia</button>` : ""}</div>
+    <div class="facts">${facts.map(([k, x]) => `<div class="fact"><div class="k">${k}</div><div class="v">${esc(String(x))}</div></div>`).join("")}</div></div>
+    ${L.length >= 2 ? `<h2>Controles de leche <span class="count">últimos ${L.length} de ${a.leche.length}</span></h2><div class="panel">${chart({type:"line", labels: L.map(x => fV(x[0]).slice(0, 5)), full: L.map(x => fV(x[0])), series:[{name:"Leche", data: L.map(x => x[1]), color:"var(--accent)", fill:true}], unit:"kg", h:160, aria:"Controles de leche de la vaca"})}</div>` : ""}
+    <h2>Historia <span class="count">${ev.length}</span></h2>
+    <div class="list">${ev.slice(0, VP.n).map(([f, t, d]) => `<div class="row" style="cursor:default"><span class="tag info" style="min-width:86px;font-size:.8rem">${fV(f)}</span><span class="body"><span class="t">${esc(t)}</span><br><span class="s">${esc(d || "—")}</span></span></div>`).join("")}</div>
+    ${ev.length > VP.n ? `<div class="actionsrow"><button class="btn ghost" data-vp-mas="1">Ver ${Math.min(50, ev.length - VP.n)} más</button></div>` : ""}`;
+}
+function vpToros(H){
+  const desde = vpDesde(H, "toros"), st = {};
+  Object.values(H.animales).forEach(a => a.serv.forEach((s, i) => { if (desde && s[1] <= desde) return; const t = (st[s[2]] = st[s[2]] || {n: 0, p: 0, d: 0, ult: ""});
+    const r = resultadoServ(a, i); t.n++; if (r){ t.d++; if (r === "+") t.p++; } if (s[1] > t.ult) t.ult = s[1]; }));
+  const ids = [...new Set([...H.toros.map(t => t.id), ...Object.keys(st)])].filter(k => k && k !== "X" && k !== "X@");
+  const filas = ids.map(id => { const t = H.toros.find(x => x.id === id) || {}; const s = st[id] || {n: 0, p: 0, d: 0, ult: ""}; return {id, t, s}; })
+    .filter(r => r.s.n || !desde).sort((x, y) => y.s.n - x.s.n || x.id.localeCompare(y.id));
+  return `<p class="lead">Los toros y pajillas del respaldo, con cuántas veces se usaron y cuántas preñaron.</p>${vpFiltros(H, "toros", false)}
+    <div class="tablewrap"><table class="t"><thead><tr><th>Código</th><th>Nombre</th><th>Raza</th><th>Servicios</th><th>Preñez</th><th>Último uso</th><th>Registro</th></tr></thead><tbody>
+    ${filas.slice(0, VP.n).map(({id, t, s}) => `<tr><td translate="no">${esc(id)}</td><td translate="no">${esc(t.nombre || "—")}</td><td>${esc(t.raza || "—")}</td><td>${s.n}</td><td>${s.d ? Math.round(100 * s.p / s.d) + ` % (${s.p}/${s.d})` : "—"}</td><td>${fV(s.ult)}</td><td>${esc(t.reg || "—")}</td></tr>`).join("")}</tbody></table></div>
+    ${filas.length > VP.n ? `<div class="actionsrow"><button class="btn ghost" data-vp-mas="1">Ver más</button></div>` : ""}`;
+}
+function vpFinca(H, v){
+  const F = H.finca || {}, sec = (t, body) => body ? `<h2>${t}</h2><div class="panel">${body}</div>` : "";
+  const tabla = (cab, filas) => filas.length ? `<div class="tablewrap" style="margin-top:0"><table class="t"><thead><tr>${cab.map(c => `<th>${c}</th>`).join("")}</tr></thead><tbody>${filas.map(r => `<tr>${r.map(x => `<td>${esc(String(x ?? "—"))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : "";
+  const area = String(F.area || "").split("|").filter(Boolean);
+  const metas = {}; (H.metas || []).forEach(m => (metas[m.cat] = metas[m.cat] || []).push(m));
+  return `<p class="lead">Los datos generales de la finca guardados en VAMPP.</p>
+    ${sec("Ficha", tabla(["Dato","Valor"], [["Nombre", F.nombre], ["Número en VAMPP", v.finca], ["Dirección", F.dir], ["Ciudad", F.ciudad], ["Teléfono", F.tel], ["Propietario", F.propietario],
+      ["Correo", F.email], ["Agrupación", F.agrupacion], ["Área", area.length ? area.join(" / ") : ""], ["En VAMPP desde", F.inicio ? fV(F.inicio) : ""], ["Respaldo", fV(v.respaldo) + (v.version ? " · " + v.version : "")]].filter(r => r[1])))}
+    ${sec("Compradores y mataderos", tabla(["Nombre","Dirección","Teléfono"], (H.contactos || []).map(c => [c.nombre, c.dir, c.tel])))}
+    ${sec("Inseminadores", tabla(["Nombre","Cédula","Desde"], (H.inseminadores || []).map(c => [c.nombre, c.ced, fV(c.desde)])))}
+    ${sec("Entregas de leche", tabla(["Código","Nombre"], (H.entregas || []).map(c => [c.cod, c.nombre])))}
+    ${sec("Productos de secado", tabla(["Producto","Principios activos"], (H.secado || []).map(c => [c.prod, c.pa.join(", ")])))}
+    ${sec("Vacunas definidas", tabla(["Vacuna","Contra"], (H.vacunas || []).map(c => [c.prod, c.pa.join(", ")])))}
+    ${Object.keys(metas).length ? `<h2>Metas guardadas en VAMPP</h2>${Object.entries(metas).map(([c, l]) => `<details class="box"><summary>${esc(META_CAT[c] || c)} <span class="s">${l.length} metas</span></summary><div class="in">${tabla(["No.","Meta","Valor"], l.sort((x, y) => x.i - y.i).map(m => [m.i, m.lbl, m.num]))}</div></details>`).join("")}
+      <p class="note">VAMPP guarda las metas por número de indicador, sin el nombre del indicador.</p>` : ""}`;
+}
+function pantallaVAMPP(){
+  const h = vamppHist();
+  if (!h){ const {sel} = vamppElegido();
+    return `<p class="hello">Historial de VAMPP</p><div class="panel"><p style="margin:0 0 10px">${sel ? "Este respaldo se cargó con una versión anterior de Rumia. Súbalo de nuevo para ver todo el historial." : "Todavía no ha subido un respaldo de VAMPP."}</p>
+      <div class="actionsrow" style="margin-top:0"><button class="btn" data-tab="datos">Ir a Datos para subirlo</button></div></div>`; }
+  const {H, v} = h, ap = VP.ap;
+  const cuerpo = ap === "resumen" ? vpResumen(H, v) : ap === "vaca" ? vpVaca(H) : ap === "toros" ? vpToros(H) : ap === "finca" ? vpFinca(H, v) : vpLista(H, ap);
+  return `<p class="hello">Historial de VAMPP</p>
+    <p class="note" style="margin-top:0">Finca ${esc(v.finca)}${v.nombre ? " · " + esc(v.nombre) : ""} · respaldo del ${fV(v.respaldo)} · datos hasta el ${fV(H.ultimo)}</p>
+    <div class="chips" role="group" aria-label="Apartado">${VP_APS.map(([k, l]) => `<button class="chip" data-vp-ap="${k}" aria-pressed="${k === ap}">${l}</button>`).join("")}</div>
+    <h2>${esc((VP_APS.find(x => x[0] === ap) || ["", ""])[1])}</h2>${cuerpo}
+    <p class="note">Los nombres de los exámenes y problemas se tradujeron de los códigos de VAMPP; el código original va al lado cuando hace falta.</p>`;
+}
 function pantallaMas(){
   const fila = (k, t, s) => `<button class="row" data-tab="${k}"><span class="tag info">${ICON[k]||""}</span><span class="body"><span class="t">${t}</span><br><span class="s">${s}</span></span></button>`;
   return `<p class="hello">Más</p>
-  <div class="list menu">${fila("ordeno","Ordeño y calidad de leche","Células somáticas, conductividad, retiro, vacas duras y flujo")}${fila("graficos","Análisis","Gráficos y calculadora de concentrado")}${MOSTRAR_ASIST ? fila("asistente","Asistente","Preguntas sobre su hato") : ""}${fila("datos","Datos y ajustes","Cargar reportes, idioma, modo oscuro")}</div>`;
+  <div class="list menu">${fila("ordeno","Ordeño y calidad de leche","Células somáticas, conductividad, retiro, vacas duras y flujo")}${vamppHist() ? fila("vampp","Historial de VAMPP","Partos, servicios, palpaciones, leche, salud, bajas, toros y finca") : ""}${fila("graficos","Análisis","Gráficos y calculadora de concentrado")}${MOSTRAR_ASIST ? fila("asistente","Asistente","Preguntas sobre su hato") : ""}${fila("datos","Datos y ajustes","Cargar reportes, idioma, modo oscuro")}</div>`;
 }
 let tab = location.hash.slice(1) || "hoy";
-if (!["hoy","vacas","repro","crianza","mas","graficos","asistente","datos","calor","anotar","ordeno"].includes(tab)) tab = "hoy";
+if (!["hoy","vacas","repro","crianza","mas","graficos","asistente","datos","calor","anotar","ordeno","vampp"].includes(tab)) tab = "hoy";
 const temaEfectivo = () => document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 { const t = store.get("tema", null); if (t) document.documentElement.dataset.theme = t; }
 function cambiarTema(){ const n = temaEfectivo() === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = n; store.set("tema", n); render(); }
@@ -2730,7 +2970,7 @@ async function archivosDeDrop(dt){
 function go(t){ tab = t; try{ history.replaceState(null,"","#"+t); }catch(e){} render(); window.scrollTo(0,0); }
 function toast(m){ const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(()=>t.hidden=true, 3200); }
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-tab],[data-vaca],[data-filtro],[data-q],[data-voz],[data-go],[data-hablar-ficha],[data-serie],[data-rango],[data-preset],[data-celo],[data-reg-tipo],[data-tarea],[data-borrar-reg],[data-anotar-vaca],[data-anotar-tipo],[data-q-ia],#exportreg,#masreg,#modomanual,#borrardatos,#cerrar,#sbg,#tema,#demo,#probarvoz,#elegircarpeta,#actualizar,#quitarvampp");
+  const el = e.target.closest("[data-tab],[data-vaca],[data-filtro],[data-q],[data-voz],[data-go],[data-hablar-ficha],[data-serie],[data-rango],[data-preset],[data-celo],[data-reg-tipo],[data-tarea],[data-borrar-reg],[data-anotar-vaca],[data-anotar-tipo],[data-q-ia],#exportreg,#masreg,#modomanual,#borrardatos,#cerrar,#sbg,#tema,#demo,#probarvoz,#elegircarpeta,#actualizar,#quitarvampp,[data-vp-ap],[data-vp-mas],[data-vp-vaca],[data-vp-todo]");
   if (!el) return;
   if (el.id==="sbg" && e.target!==el) return;
   if (el.id==="tema") return cambiarTema();
@@ -2748,6 +2988,10 @@ document.addEventListener("click", e => {
   if (el.id==="exportreg") return exportarRegistros();
   if (el.id==="borrardatos") return borrarMisDatos();
   if (el.id==="quitarvampp") return quitarVAMPP();
+  if (el.dataset.vpAp){ VP.ap = el.dataset.vpAp; VP.n = 50; return render(); }
+  if (el.dataset.vpMas){ VP.n += 50; return render(); }
+  if (el.dataset.vpTodo){ VP.per[VP.ap] = 0; VP.n = 50; return render(); }
+  if (el.dataset.vpVaca){ VP.ap = "vaca"; VP.sel = el.dataset.vpVaca; VP.n = 50; cerrarFicha(); return go("vampp"); }
   if (el.id==="masreg"){ regVer += 30; return render(); }
   if (el.id==="modomanual"){ store.set("modo","manual"); IMP.archivos = []; cargarManual(); chat.length = 0; regTipo = "animal"; toast("Listo. Empiece anotando sus animales."); return go("anotar"); }
   if (el.dataset.tab){ if (el.dataset.tab === "anotar" && !el.closest(".sheet")) regPara = ""; return go(el.dataset.tab); }
@@ -2774,6 +3018,9 @@ document.addEventListener("change", e => {
   }
   if (el.id && el.id.startsWith("ali-")){ const k = el.id.slice(4), x = toNum(el.value); if (!isNaN(x) && x > 0){ ALI[k] = x; store.set("ali", ALI); } return render(); }
   if (el.id === "finca"){ IMP.finca = el.value.trim(); store.set("finca", IMP.finca); if (D.fuente === "import" || D.fuente === "manual"){ D.finca = IMP.finca || "Mi finca"; if (BASE) BASE.finca = D.finca; } return render(); }
+  if (el.id === "vp-filtro"){ VP.vaca = el.value.trim(); VP.n = 50; return render(); }
+  if (el.id === "vp-per"){ VP.per[VP.ap] = +el.value; VP.n = 50; return render(); }
+  if (el.id === "vp-sel"){ VP.sel = el.value.trim(); VP.n = 50; return render(); }
   if (el.id === "vamppfinca"){ store.set("vamppFinca", el.value); construir(); toast("Listo: usando la finca " + el.value + " del respaldo."); return render(); }
   if (el.id === "diaant"){ IMP.diaAnterior = el.checked; store.set("diaAnterior", el.checked); if (IMP.archivos.length) construir(); return render(); }
   if (el.id === "ubicacion"){ const u = UBICACIONES.find(x => x.id === el.value); store.set("ubicacion", u || null); if (u){ toast("Buscando el clima de " + u.nombre + "…"); cargarClimaVivo(); } return; }
