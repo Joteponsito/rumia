@@ -1473,17 +1473,117 @@ function prepararTabla(rows, hoja){
   }
   return {hoja, filaTitulos: bi+1, headers, data, map: mapear(headers), v: 2};
 }
+/* ================= Respaldo de VAMPP Bovino (.B30 y parecidos) ================= */
+// El respaldo es texto: una línea con la clave ^R(finca,"H",vaca,…) y la siguiente con los datos separados por |.
+// Las fechas vienen como días desde el 31/12/1840.
+const esRespaldoVAMPP = txt => /Respaldo para VAMPP/i.test(txt.slice(0, 600)) || /^\^R\(\d+[,)]/m.test(txt.slice(0, 4000));
+const fechaVAMPP = v => { const n = parseInt(v, 10); return n > 40000 && n < 80000 ? new Date(1840, 11, 31 + n) : null; };
+function leerVAMPP(txt){
+  const L = txt.split(/\r?\n/), R = new Map();
+  for (let i = 0; i < L.length - 1; i++){
+    const k = L[i]; if (!/^\^R\(.*\)$/.test(k)) continue;
+    const s = (k.slice(3, -1).match(/"(?:[^"]|"")*"|[^,]+/g) || []).map(x => x[0] === '"' ? x.slice(1, -1).replace(/""/g, '"') : x);
+    const f = s[0]; if (!R.has(f)) R.set(f, []); R.get(f).push([s.slice(1), L[i + 1]]); i++;
+  }
+  const cab = txt.slice(0, 600).match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  let fecha = null;
+  if (cab){ let y = +cab[3]; if (y < 100) y += 2000; let h = +cab[4] % 12; if (/pm/i.test(cab[6] || "")) h += 12; fecha = new Date(y, +cab[2] - 1, +cab[1], h, +cab[5]); }
+  const ver = (txt.slice(0, 600).match(/VAMPP[^,\r\n]*/) || [""])[0].trim();
+  const fincas = [];
+  R.forEach((regs, id) => {
+    const A = new Map(), RAZA = {}; let nombre = "", ultimo = null, ckdb = null;
+    const vaca = n => { if (!A.has(n)) A.set(n, {serv:[], partos:{}, secados:{}, gyn:[], cc:[], ccs:[], leche:[]}); return A.get(n); };
+    const nota = d => { if (d && (!ultimo || d > ultimo)) ultimo = d; return d; };
+    regs.forEach(([s, v]) => {
+      const p = String(v ?? "").split("|");
+      if (!s.length){ nombre = (p[0] || "").replace(/^ENTREGA\d*\s*/i, "").replace(/\uFFFD|ï¿½/g, (m, i, t) => /[A-Z]/.test(t[i - 1] || "") ? "Ñ" : "ñ").trim(); return; }
+      if (s[0] === "BREED" && s.length === 2) RAZA[s[1]] = v;
+      if (s[0] === "CKDB") ckdb = fechaVAMPP(v);
+      if (s[0] !== "H" || s.length < 2) return;
+      const a = vaca(s[1]);
+      if (s.length === 2) a.reg = p;
+      else if (s.length === 3 && s[2] === "0") a.lact = parseInt(v, 10) || 0;
+      else if (s.length === 3 && /^\d+\.1$/.test(s[2])) a.partos[parseInt(s[2], 10)] = {f: nota(fechaVAMPP(p[0])), sexo: p[1]};
+      else if (s.length === 3 && /^\d+\.2$/.test(s[2])) a.secados[parseInt(s[2], 10)] = nota(fechaVAMPP(p[0]));
+      else if (s.length === 4 && /^\d+$/.test(s[2]) && /^\d+$/.test(s[3])) a.serv.push({lact: +s[2], f: nota(fechaVAMPP(s[3])), toro: p[0], fd: fechaVAMPP(p[2]), res: p[3]});
+      else if (s.length === 4 && s[2] === "GYN") a.gyn.push({f: nota(fechaVAMPP(s[3])), cod: p[0], nota: p[3], dias: p[4]});
+      else if (s.length === 4 && s[2] === "CSCORE") a.cc.push({f: fechaVAMPP(s[3]), v: parseFloat(v)});
+      else if (s.length === 4 && s[2] === "SOMCEL") a.ccs.push({f: fechaVAMPP(s[3]), v: parseFloat(v)});
+      else if (s.length === 4 && s[2] === "PROEFM") a.leche.push({f: nota(fechaVAMPP(s[3])), v: parseFloat(p[0])});
+    });
+    // Los días se cuentan al último dato anotado en VAMPP, no al día del respaldo
+    const ref = ultimo || ckdb || fecha || new Date();
+    const headers = ["Vaca","Identificación VAMPP","Fecha de nacimiento","Raza","Lactancia","Grupo","Fecha ultimo parto","Estado reproductivo","Servicios","Ultima IA","Toro","Dias de prenez","Parto esperado","Fecha de secado","Condicion corporal","Fecha de la ultima condicion corporal","Celulas somaticas","Fecha prueba","Leche ultimo control (kg)","Fecha ultimo control"];
+    const data = []; let total = 0;
+    A.forEach((a, num) => {
+      const p = a.reg; if (!p) return; total++;
+      if (p[6] || p[9]) return; // salió de la finca o murió
+      const nac = fechaVAMPP(p[0]), lact = a.lact || 0, cod = String(p[3] || "").replace(/\d+$/, "");
+      const parto = a.partos[lact] ? a.partos[lact].f : null;
+      const secado = a.secados[lact] && (!parto || a.secados[lact] >= parto) ? a.secados[lact] : null;
+      const serv = a.serv.filter(x => x.lact === lact + 1 && x.f && (!parto || x.f > parto)).sort((x, y) => x.f - y.f);
+      const ult = serv[serv.length - 1];
+      let estado = lact ? "Abierta" : null;
+      if (ult) estado = ult.res === "+" ? "Preñada" : ult.res === "-" ? "Abierta" : "Inseminada";
+      if (ult && ult.res === "+" && a.gyn.some(g => g.f > ult.f && (/^DP\.61$/.test(g.cod) || /aborto/i.test(g.nota)))) estado = "Abierta";
+      let dp = null, pe = null;
+      if (estado === "Preñada"){ dp = Math.round((ref - ult.f) / 864e5); pe = addDays(ult.f, 280); }
+      const edad = nac ? (ref - nac) / 864e5 : null;
+      const grupo = lact ? (secado ? "Seca" : "Ordeño") : edad != null && edad < 365 ? "Ternera" : "Novilla";
+      const fs = secado || (pe && lact ? addDays(pe, -60) : null);
+      const cc = a.cc.sort((x, y) => x.f - y.f).pop(), ccs = a.ccs.sort((x, y) => x.f - y.f).pop();
+      const lec = grupo === "Ordeño" ? a.leche.filter(x => !parto || x.f >= parto).sort((x, y) => x.f - y.f).pop() : null;
+      data.push([num, (p[5] || "").trim() || null, nac, RAZA[cod] || p[3] || null, lact, grupo, parto, estado, serv.length || (lact ? 0 : null),
+        ult ? ult.f : null, ult ? ult.toro : null, dp, pe, fs, cc ? cc.v : null, cc ? cc.f : null, ccs ? ccs.v : null, ccs ? ccs.f : null,
+        lec && !isNaN(lec.v) ? lec.v : null, lec ? lec.f : null]);
+    });
+    if (!data.length && !total) return;
+    data.sort((x, y) => (+x[0] || 0) - (+y[0] || 0));
+    fincas.push({id, nombre, ultimo, headers, data, total});
+  });
+  return {fecha: fecha || [...fincas.map(f => f.ultimo)].filter(Boolean).sort((a, b) => b - a)[0] || new Date(), version: ver, fincas};
+}
+// Columnas que Rumia entiende de la tabla armada con el respaldo
+const MAPA_VAMPP = {0:"num", 2:"nacimiento", 3:"raza", 4:"lact", 5:"grupo", 6:"fecha_parto", 7:"estado", 8:"servicios", 9:"ultima_ia", 10:"toro",
+  11:"dias_prenez", 12:"parto_esp", 13:"fecha_secado", 14:"cc", 15:"fecha_cc", 16:"ccs", 17:"fecha_ccs"};
+// El respaldo trae una o varias fincas: se usa la elegida, o la que tiene los datos más recientes.
+// Si hay reportes del sistema de ordeño mucho más nuevos que el respaldo, de VAMPP solo se toman los datos que no cambian.
+function vamppElegido(){
+  const VA = IMP.archivos.filter(a => a.vampp), otros = IMP.archivos.filter(a => !a.vampp);
+  const sel = VA.find(a => a.vampp.finca === store.get("vamppFinca", "")) || VA.slice().sort((x, y) => y.fecha - x.fecha)[0] || null;
+  const ultOtro = otros.length ? Math.max(...otros.map(a => a.fecha.getTime())) : 0;
+  return {VA, sel, otros, viejo: !!sel && ultOtro > addDays(sel.fecha, 45).getTime()};
+}
+const VAMPP_FIJOS = new Set(["nacimiento", "raza"]);
+async function leerRespaldoVAMPP(f, firma){
+  const buf = await f.arrayBuffer(); const txt = new TextDecoder("utf-8").decode(buf);
+  if (!esRespaldoVAMPP(txt)) return null;
+  const r = leerVAMPP(txt);
+  if (!r.fincas.length) throw new Error("el respaldo no trae animales");
+  IMP.archivos = IMP.archivos.filter(a => !a.vampp);
+  r.fincas.forEach(fi => IMP.archivos.push({nombre: `Respaldo VAMPP · Finca ${fi.id}`, firma: firma + "|vampp" + fi.id, modificado: f.lastModified,
+    fecha: fi.ultimo || r.fecha, fechaDe: "respaldo",
+    vampp: {finca: fi.id, nombre: fi.nombre, total: fi.total, activos: fi.data.length, respaldo: iso(r.fecha), version: r.version, archivo: f.name},
+    tablas: [{hoja: `Finca ${fi.id}`, filaTitulos: 1, headers: fi.headers, data: fi.data, v: 2,
+      map: Object.fromEntries(fi.headers.map((_, j) => [j, MAPA_VAMPP[j] || ""]))}]}));
+  return r;
+}
 const IMP = {archivos:[], errores:[], cargando:"", finca: store.get("finca", ""), diaAnterior: store.get("diaAnterior", false)};
-async function leerArchivos(lista, silencio){
-  const files = [...lista].filter(f => /\.(xlsx|xlsm|xls|csv|txt)$/i.test(f.name) && !/^~\$/.test(f.name));
-  if (!files.length){ toast("No encontré archivos de Excel o CSV ahí."); return; }
+async function leerArchivos(lista, silencio, soloVAMPP){
+  const files = [...lista].filter(f => (soloVAMPP || /\.(xlsx|xlsm|xls|csv|txt|b\d\d)$/i.test(f.name)) && !/^~\$/.test(f.name));
+  if (!files.length){ toast(soloVAMPP ? "No elegí ningún archivo." : "No encontré archivos de Excel o CSV ahí."); return; }
   IMP.errores = []; IMP.cargando = `Leyendo ${files.length} archivo${files.length>1?"s":""}…`; if (tab === "datos") render();
   if (files.some(f => /\.xls/i.test(f.name) && !f.hojas)){ try { await cargarXLSX(); } catch(e){ IMP.errores.push("No se pudo abrir el lector de Excel porque no hay internet. Los archivos CSV sí se leen sin conexión."); } }
   let nuevos = 0, repetidos = 0;
   for (const f of files){
     const firma = f.name + "|" + f.size + "|" + f.lastModified;
-    if (IMP.archivos.some(a => a.firma === firma)){ repetidos++; continue; }
+    if (IMP.archivos.some(a => a.firma === firma || a.firma.startsWith(firma + "|vampp"))){ repetidos++; continue; }
     try {
+      if (soloVAMPP || /\.(b\d\d|txt)$/i.test(f.name)){
+        const r = await leerRespaldoVAMPP(f, firma);
+        if (r){ nuevos++; continue; }
+        if (soloVAMPP){ IMP.errores.push(`${f.name}: no parece un respaldo de VAMPP. Haga el respaldo desde VAMPP y elija ese archivo.`); continue; }
+      }
       let tablas = [];
       if (/\.(csv|txt)$/i.test(f.name)){
         const buf = await f.arrayBuffer(); let txt;
@@ -1531,8 +1631,9 @@ function normEstado(e){
 const siNo = v => { const n = norm(v); return /^(si|s|x|1|true|celo|alta|yes|y)$/.test(n) || (typeof v === "number" && v > 0 && v <= 1); };
 function construir(){
   const regs = new Map(); const tablasCrudas = []; const COL = nuevoColector(); const LAT = {};
-  IMP.archivos.forEach(ar => { const tp = tipoReporte(ar.nombre); if (tp && (!LAT[tp] || ar.fecha > LAT[tp])) LAT[tp] = ar.fecha; });
-  IMP.archivos.forEach(ar => ar.tablas.forEach(t => {
+  const VS = vamppElegido(), lista = VS.sel ? [...VS.otros, VS.sel] : VS.otros;
+  lista.forEach(ar => { const tp = tipoReporte(ar.nombre); if (tp && (!LAT[tp] || ar.fecha > LAT[tp])) LAT[tp] = ar.fecha; });
+  lista.forEach(ar => ar.tablas.forEach(t => {
     const tipo = tipoReporte(ar.nombre);
     const idx = {}; Object.entries(t.map).forEach(([j,f]) => { if (f) idx[f] = +j; });
     const roles = {}; Object.entries(idx).forEach(([f,j]) => roles[f] = t.headers[j]);
@@ -1550,6 +1651,7 @@ function construir(){
       if (typeof num === "string" && /^\s*\d+[.,]\d+\s*$/.test(num)) return;
       num = String(typeof num === "number" ? Math.round(num) : num).trim();
       if (!num || /total|promedio|suma|media|prom/i.test(num) || num.length > 14) return;
+      if (ar.vampp && VS.viejo && !regs.has(num)) return;
       const g = k => idx[k] === undefined ? null : r[idx[k]];
       let fecha = filaFecha(r); if (!fecha) fecha = fechaArchivo;
       const key = iso(fecha);
@@ -1579,7 +1681,7 @@ function construir(){
         const d2 = R.dias.get(key2); if (d2.leche == null || !d2.directa) d2.leche = v; });
       R0.ult = Math.max(R0.ult || 0, fecha.getTime());
       ["grupo","del","lact","estado","dias_prenez","servicios","ultima_ia","toro","cc","peso","raza","actividad","nacimiento","edad","tratamiento","prep","inicio_celo","ventana","concepcion","indicador1","indicador2","cambio_grupo","recorte","dias_celo","horas_ia","pico_actividad","pico_rumia","indice_celo","dias_ia","temp_corp","fecha_parto","ccs","fecha_ccs","para_insem","prob_prenez","pico_celo","dias_parto","parto_esp","fecha_secado","del_edad","sucursal","grupo_sec","fecha_cc","prom_sem","prod305","fecha_prenez"].forEach(k => {
-        const v = g(k); if (v == null || v === "") return; const t0 = fecha.getTime();
+        const v = g(k); if (v == null || v === "") return; if (ar.vampp && VS.viejo && !VAMPP_FIJOS.has(k)) return; const t0 = fecha.getTime();
         if (R0.snapF[k] === undefined || t0 >= R0.snapF[k]){ R0.snap[k] = v; R0.snapF[k] = t0; R0.snapH = R0.snapH || {}; R0.snapH[k] = t.headers[idx[k]]; R0.snapT = R0.snapT || {}; R0.snapT[k] = tipo; } });
     });
   }));
@@ -1587,7 +1689,7 @@ function construir(){
   const todas = new Set(); regs.forEach(R => R.dias.forEach((d,k) => { if (d.leche != null || d.rumia != null) todas.add(k); }));
   const claves = [...todas].sort().slice(-60);
   const fechasD = claves.map(k => { const [y,m,d] = k.split("-").map(Number); return new Date(y,m-1,d); });
-  const ultima = fechasD.length ? fechasD[fechasD.length-1] : (IMP.archivos.length ? new Date(Math.max(...IMP.archivos.map(a=>a.fecha.getTime()))) : new Date());
+  const ultima = fechasD.length ? fechasD[fechasD.length-1] : (lista.length ? new Date(Math.max(...lista.map(a=>a.fecha.getTime()))) : new Date());
   const hoy = fechasD.length ? addDays(ultima, 1) : ultima;
   const animales = [];
   regs.forEach((R, num) => {
@@ -1657,7 +1759,7 @@ function construir(){
   if (sacadas.length){ const fuera = new Set(sacadas.map(a => a.num)); for (let i = animales.length - 1; i >= 0; i--) if (fuera.has(animales[i].num)) animales.splice(i, 1); }
   if (!animales.length && !tablasCrudas.length) return;
   const ahoraImp = IMP.archivos.length ? Math.max(...IMP.archivos.map(x => x.modificado || 0)) : 0;
-  cargar({finca: IMP.finca || afi.nombre || "Mi finca", fuente:"import", hoy: dmy(hoy), ahora: ahoraImp || null, fechas: fechasD.map(dm), fechasISO: claves, animales,
+  cargar({finca: IMP.finca || afi.nombre || (VS.sel && VS.sel.vampp.nombre) || "Mi finca", fuente:"import", hoy: dmy(hoy), ahora: ahoraImp || null, fechas: fechasD.map(dm), fechasISO: claves, animales,
     crianza_meses:null, fertilidad:null, umbrales: DEMO.umbrales, tablasCrudas, afi});
 }
 /* ================= Reportes de sistemas de ordeño (Afimilk/AfiFarm y parecidos) ================= */
@@ -1667,7 +1769,7 @@ const REPORTES = [[/salud.*orden/, "salud"], [/vacas en celo/, "celo"], [/insemi
   [/resumen de la produccion semanal/, "semanal"], [/sospechosa de aborto/, "aborto"], [/estadisticas de produccion de leche por sucursal/, "ccs"],
   [/ordenos manuales/, "retiro_manual"], [/flujo de leche en ordeno/, "flujo_curva"], [/estadisticas leche flujo/, "flujo_ordeno"], [/conductividad/, "conductividad"],
   [/condicion corporal/, "cc"], [/vacas y novillas prenadas/, "prenadas"], [/destetar/, "destetar"], [/cambio a grupo desarrollo/, "a_desarrollo"],
-  [/cambio a novilla/, "a_novilla"], [/secado de novillas/, "secado_novillas"], [/resumen de leche diaria por hato/, "hato_turno"]];
+  [/cambio a novilla/, "a_novilla"], [/secado de novillas/, "secado_novillas"], [/resumen de leche diaria por hato/, "hato_turno"], [/^respaldo vampp/, "vampp"]];
 const tipoReporte = nombre => { const n = norm(String(nombre).replace(/\s+(\d{4}-\d{2}-\d{2}|\d{1,2}_\d{1,2}_\d{4}).*$/, "")); const r = REPORTES.find(([re]) => re.test(n)); return r ? r[1] : null; };
 // Reportes que son listas de acción: estar en la lista es el dato
 const LISTAS = {aborto:"Sospecha de aborto", sin_celo:"Sin celo detectado", repetidas:"Inseminaciones repetidas", destetar:"Destetar y pasar a Inicio",
@@ -1857,12 +1959,29 @@ async function leerCarpetaLocal(silencio){
         return hs.map(s => ({nombre: s.nombre, filas: s.filas.map(f => f.map(c => c && typeof c === "object" && c.d ? (([y,m,d]) => new Date(+y, m-1, +d))(c.d.split("-")) : c))})); }) : null}));
     const firmas = new Set(files.map(f => f.name + "|" + f.size + "|" + f.lastModified));
     const antes = IMP.archivos.length;
-    IMP.archivos = IMP.archivos.filter(a => firmas.has(a.firma));
+    IMP.archivos = IMP.archivos.filter(a => a.vampp || firmas.has(a.firma));
+    if (!files.length && IMP.archivos.some(a => a.vampp)){ construir(); return render(); }
     if (!files.length){ IMP.archivos = []; IMP.errores = ["La carpeta no tiene reportes de Excel o CSV todavía."]; cargar(structuredClone(DEMO)); return render(); }
-    const nuevos = files.filter(f => !IMP.archivos.some(a => a.firma === f.name + "|" + f.size + "|" + f.lastModified));
+    const nuevos = files.filter(f => { const fm = f.name + "|" + f.size + "|" + f.lastModified; return !IMP.archivos.some(a => a.firma === fm || a.firma.startsWith(fm + "|vampp")); });
     if (nuevos.length) await leerArchivos(nuevos, silencio);
     else { if (IMP.archivos.length !== antes) construir(); if (!silencio) toast("La carpeta no tiene reportes nuevos."); render(); }
   } catch(e){ toast("No se pudo leer la carpeta."); }
+}
+function quitarVAMPP(){
+  IMP.archivos = IMP.archivos.filter(a => !a.vampp);
+  if (IMP.archivos.length){ construir(); guardarArchivos(); }
+  else { try { localStorage.removeItem("rumia.archivos"); } catch(e){} store.set("modo","demo"); cargar(structuredClone(DEMO)); }
+  toast("Listo: se quitó el respaldo de VAMPP."); render();
+}
+function panelVAMPP(){
+  const {VA, sel, viejo} = vamppElegido(), v = sel && sel.vampp;
+  const fr = s => { const d = s ? parseFecha(s) : null; return d ? dmy(d) : "?"; };
+  return `<div class="panel" style="margin-top:12px"><div class="label">Respaldo de VAMPP</div>
+    <p style="margin:6px 0 10px">${v ? `Usando el respaldo del ${fr(v.respaldo)}: finca ${esc(v.finca)}${v.nombre?` (${esc(v.nombre)})`:""}, ${v.activos} animales activos de ${v.total}. Los últimos datos anotados en VAMPP son del ${dmy(sel.fecha)}.`
+      : "Suba el respaldo de VAMPP Bovino (el archivo .B30 o parecido que hace VAMPP al respaldar). Rumia toma de cada vaca la lactancia, el último parto, los servicios, el toro, la preñez, el parto esperado, la condición corporal y las células somáticas, y lo junta con los reportes del sistema de ordeño."}</p>
+    ${VA.length > 1 ? `<label class="form" style="display:block;margin-bottom:10px"><span class="label">El respaldo trae ${VA.length} fincas. Usar:</span><select class="field" id="vamppfinca" style="margin-top:4px">${VA.map(a => `<option value="${esc(a.vampp.finca)}" ${a===sel?"selected":""}>Finca ${esc(a.vampp.finca)}${a.vampp.nombre?" · "+esc(a.vampp.nombre):""} · ${a.vampp.activos} activos, datos hasta ${dmy(a.fecha)}</option>`).join("")}</select></label>` : ""}
+    ${viejo ? `<p class="note" style="margin-top:0">Sus reportes del sistema de ordeño son más nuevos que el respaldo. Por eso de VAMPP solo se usan la fecha de nacimiento y la raza de las vacas que salen en esos reportes. Suba un respaldo reciente para usar también partos, servicios y preñeces.</p>` : ""}
+    <div class="actionsrow" style="margin-top:0"><label class="btn" for="vampp" style="cursor:pointer">${v ? "Subir otro respaldo" : "Subir respaldo de VAMPP"}</label><input class="sr" type="file" id="vampp">${v ? `<button class="btn ghost" id="quitarvampp">Quitar respaldo</button>` : ""}</div></div>`;
 }
 function volverDemo(){ store.set("modo","demo"); IMP.archivos = []; IMP.errores = []; cargar(structuredClone(DEMO)); chat.length = 0; toast("Mostrando la finca de demostración."); render(); }
 function cambiarMapa(ref, val){
@@ -1884,7 +2003,7 @@ function pantallaDatos(){
       <div class="in"><p class="note" style="margin-top:0">Si una columna quedó mal, cámbiela aquí. La app recordará su formato la próxima vez.</p>
       ${t.headers.map((h,j)=>`<div class="maprow ${t.map[j]?"on":""}"><span title="${esc(h)}">${esc(h)}</span><select data-map="${ai}:${ti}:${j}" aria-label="Uso de la columna · ${esc(h)}">${opciones.map(([v,l])=>`<option value="${v}" ${t.map[j]===v?"selected":""}>${esc(l)}</option>`).join("")}</select></div>`).join("")}</div></details>`; }).join("")).join("");
   return `<p class="hello">Datos de la finca</p>
-  <p class="lead">${real?`Mostrando sus reportes: ${IMP.archivos.length} archivos, ${ANIM.length} animales${NF?`, del ${D.fechas[0]} al ${D.fechas[NF-1]}`:""}.`:"Ahora ve la finca de demostración. Conecte la carpeta donde guarda los reportes del sistema de ordeño y la app se arma con sus datos."}</p>
+  <p class="lead">${real?`Mostrando sus reportes: ${IMP.archivos.filter(a=>!a.vampp).length + (IMP.archivos.some(a=>a.vampp)?1:0)} archivos, ${ANIM.length} animales${NF?`, del ${D.fechas[0]} al ${D.fechas[NF-1]}`:""}.`:"Ahora ve la finca de demostración. Conecte la carpeta donde guarda los reportes del sistema de ordeño y la app se arma con sus datos."}</p>
   ${ESCRITORIO.activo ? `<div class="panel"><div class="label">Carpeta de reportes</div>
       <p style="margin:6px 0 12px;overflow-wrap:anywhere;font-weight:700">${ESCRITORIO.carpeta?esc(ESCRITORIO.carpeta):"Todavía no ha elegido una carpeta"}</p>
       <div class="actionsrow" style="margin-top:0"><button class="btn" id="elegircarpeta">${ESCRITORIO.carpeta?"Cambiar carpeta":"Elegir carpeta"}</button>${ESCRITORIO.carpeta?`<button class="btn ghost" id="actualizar">Actualizar ahora</button>`:""}${real?`<button class="btn ghost" id="demo">Ver la demostración</button>`:""}</div>
@@ -1898,12 +2017,14 @@ function pantallaDatos(){
     ${real?`<button class="btn ghost" id="demo">Volver a la demostración</button>`:""}</div>`}
   ${IMP.cargando?`<p class="note"><b>${esc(IMP.cargando)}</b></p>`:""}
   ${IMP.errores.length?`<div class="errs">${IMP.errores.map(esc).join("<br>")}</div>`:""}
+  ${panelVAMPP()}
   <div class="panel" style="margin-top:12px"><div class="label">¿Lleva cuaderno o no tiene sistema de ordeño?</div>
     <p style="margin:6px 0 10px">${D.fuente==="manual"?`Está llevando la finca a mano: ${ANIM.length} animales y ${regsActuales().length} registros.`:"Lleve la finca a mano: anote animales, partos, inseminaciones, tratamientos y la leche al tanque desde el celular."}</p>
     <div class="actionsrow" style="margin-top:0">${D.fuente==="manual"?`<button class="btn" data-tab="anotar">Anotar</button>${regsActuales().length?`<button class="btn ghost" id="exportreg">Descargar registros (CSV)</button>`:""}<button class="btn ghost" id="demo">Ver la demostración</button>`:`<button class="btn ghost" id="modomanual">Llevar mi finca a mano</button>`}</div></div>
   <p class="note">Los archivos se leen solo en este ${ESCRITORIO.activo?"computador":"dispositivo"}. No se suben a ningún servidor.${ESCRITORIO.activo?"":" La app los guarda en este equipo para la próxima vez."}</p>
   <div class="panel" style="margin-top:12px"><div class="label">Qué archivo sirve</div><ul class="razones" style="margin-top:8px">
     <li class="si">Cualquier Excel o CSV con una columna de número de vaca. Rumia reconoce sola las columnas.</li>
+    <li class="si">El respaldo de VAMPP Bovino, con el botón <b>Subir respaldo de VAMPP</b>.</li>
     <li class="si">De VAMPP u otro programa de hato: el inventario o la lista de vacas con lactancia, último parto, estado reproductivo, servicios y producción del último control.</li>
     <li class="si">De Afimilk, Dataflow o SCR: los reportes diarios de leche, rumia, celos y salud. Mientras más días, mejor se ve la tendencia.</li>
     <li class="neutro">Si una columna queda mal, se corrige abajo en "Lo que entendí de cada reporte".</li></ul></div>
@@ -2432,7 +2553,7 @@ async function preguntarIA(q, idx){
 /* ================= Guardar los reportes leídos en este equipo ================= */
 function guardarArchivos(){
   const fx = d => ({$f: iso(d) + "T" + hm(d)});
-  const ser = IMP.archivos.filter(a => !a.captura).map(a => ({nombre:a.nombre, firma:a.firma, modificado:a.modificado, fecha: fx(a.fecha), fechaDe:a.fechaDe,
+  const ser = IMP.archivos.filter(a => !a.captura).map(a => ({nombre:a.nombre, firma:a.firma, modificado:a.modificado, fecha: fx(a.fecha), fechaDe:a.fechaDe, vampp:a.vampp,
     tablas: a.tablas.map(t => ({hoja:t.hoja, filaTitulos:t.filaTitulos, headers:t.headers, map:t.map, v:t.v, data: t.data.map(r => r.map(v => v instanceof Date ? fx(v) : v))}))}));
   try { localStorage.setItem("rumia.archivos", JSON.stringify(ser)); store.set("modo", "import"); }
   catch(e){ try { localStorage.removeItem("rumia.archivos"); } catch(_){} toast("Los reportes son muy grandes para guardarlos en este equipo: la próxima vez hay que elegirlos de nuevo."); }
@@ -2589,6 +2710,7 @@ function render(){
   const rf = $("#regf"); if (rf) rf.onsubmit = e => { e.preventDefault(); guardarRegistro(); };
   const f = $("#askf"); if (f) f.onsubmit = e => { e.preventDefault(); preguntar($("#pregunta").value); };
   ["carpeta","archivos"].forEach(id => { const i = document.getElementById(id); if (i) i.onchange = e => { leerArchivos(e.target.files); e.target.value = ""; }; });
+  const iv = document.getElementById("vampp"); if (iv) iv.onchange = e => { leerArchivos(e.target.files, false, true); e.target.value = ""; };
   const dz = $("#drop"); if (dz){
     dz.ondragover = e => { e.preventDefault(); dz.classList.add("over"); }; dz.ondragleave = () => dz.classList.remove("over");
     dz.ondrop = async e => { e.preventDefault(); dz.classList.remove("over"); leerArchivos(await archivosDeDrop(e.dataTransfer)); }; }
@@ -2608,7 +2730,7 @@ async function archivosDeDrop(dt){
 function go(t){ tab = t; try{ history.replaceState(null,"","#"+t); }catch(e){} render(); window.scrollTo(0,0); }
 function toast(m){ const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(()=>t.hidden=true, 3200); }
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-tab],[data-vaca],[data-filtro],[data-q],[data-voz],[data-go],[data-hablar-ficha],[data-serie],[data-rango],[data-preset],[data-celo],[data-reg-tipo],[data-tarea],[data-borrar-reg],[data-anotar-vaca],[data-anotar-tipo],[data-q-ia],#exportreg,#masreg,#modomanual,#borrardatos,#cerrar,#sbg,#tema,#demo,#probarvoz,#elegircarpeta,#actualizar");
+  const el = e.target.closest("[data-tab],[data-vaca],[data-filtro],[data-q],[data-voz],[data-go],[data-hablar-ficha],[data-serie],[data-rango],[data-preset],[data-celo],[data-reg-tipo],[data-tarea],[data-borrar-reg],[data-anotar-vaca],[data-anotar-tipo],[data-q-ia],#exportreg,#masreg,#modomanual,#borrardatos,#cerrar,#sbg,#tema,#demo,#probarvoz,#elegircarpeta,#actualizar,#quitarvampp");
   if (!el) return;
   if (el.id==="sbg" && e.target!==el) return;
   if (el.id==="tema") return cambiarTema();
@@ -2625,6 +2747,7 @@ document.addEventListener("click", e => {
   if (el.dataset.qIa){ go("asistente"); return preguntar("¿Qué es lo más importante que debo hacer esta semana y por qué?"); }
   if (el.id==="exportreg") return exportarRegistros();
   if (el.id==="borrardatos") return borrarMisDatos();
+  if (el.id==="quitarvampp") return quitarVAMPP();
   if (el.id==="masreg"){ regVer += 30; return render(); }
   if (el.id==="modomanual"){ store.set("modo","manual"); IMP.archivos = []; cargarManual(); chat.length = 0; regTipo = "animal"; toast("Listo. Empiece anotando sus animales."); return go("anotar"); }
   if (el.dataset.tab){ if (el.dataset.tab === "anotar" && !el.closest(".sheet")) regPara = ""; return go(el.dataset.tab); }
@@ -2651,6 +2774,7 @@ document.addEventListener("change", e => {
   }
   if (el.id && el.id.startsWith("ali-")){ const k = el.id.slice(4), x = toNum(el.value); if (!isNaN(x) && x > 0){ ALI[k] = x; store.set("ali", ALI); } return render(); }
   if (el.id === "finca"){ IMP.finca = el.value.trim(); store.set("finca", IMP.finca); if (D.fuente === "import" || D.fuente === "manual"){ D.finca = IMP.finca || "Mi finca"; if (BASE) BASE.finca = D.finca; } return render(); }
+  if (el.id === "vamppfinca"){ store.set("vamppFinca", el.value); construir(); toast("Listo: usando la finca " + el.value + " del respaldo."); return render(); }
   if (el.id === "diaant"){ IMP.diaAnterior = el.checked; store.set("diaAnterior", el.checked); if (IMP.archivos.length) construir(); return render(); }
   if (el.id === "ubicacion"){ const u = UBICACIONES.find(x => x.id === el.value); store.set("ubicacion", u || null); if (u){ toast("Buscando el clima de " + u.nombre + "…"); cargarClimaVivo(); } return; }
   if (el.id === "asist"){ MOSTRAR_ASIST = el.checked; store.set("asist", el.checked); return render(); }
