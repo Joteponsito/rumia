@@ -1496,7 +1496,7 @@ function leerVAMPP(txt){
   R.forEach((regs, id) => {
     const A = new Map(), RAZA = {}, G = {}, TORO = {}, CONT = [], INSEM = [], ENTR = [], SEC = {}, VACD = {}, META = {};
     let nombre = "", ultimo = null, ckdb = null, ficha = null, agrup = "", area = "", inicio = null;
-    const vaca = n => { if (!A.has(n)) A.set(n, {serv:[], partos:{}, secados:{}, gyn:[], cc:[], ccs:[], leche:[], salud:[], vac:[]}); return A.get(n); };
+    const vaca = n => { if (!A.has(n)) A.set(n, {serv:[], partos:{}, secados:{}, gyn:[], cc:[], ccs:[], leche:[], salud:[], vac:[], lotes:[], pesos:[]}); return A.get(n); };
     const nota = d => { if (d && (!ultimo || d > ultimo)) ultimo = d; return d; };
     regs.forEach(([s, v]) => {
       v = String(v ?? ""); const p = v.split("|");
@@ -1524,11 +1524,13 @@ function leerVAMPP(txt){
       else if (s.length === 3 && s[2] === "0") a.lact = parseInt(v, 10) || 0;
       else if (s.length === 3 && /^\d+\.1$/.test(s[2])) a.partos[parseInt(s[2], 10)] = {f: nota(fechaVAMPP(p[0])), sexo: p[1], cria: p[5] || ""};
       else if (s.length === 3 && /^\d+\.2$/.test(s[2])) a.secados[parseInt(s[2], 10)] = {f: nota(fechaVAMPP(p[0])), prod: p[1] || "", nota: arreglarÑ(p[2])};
-      else if (s.length === 4 && /^\d+$/.test(s[2]) && /^\d+$/.test(s[3])) a.serv.push({lact: +s[2], f: nota(fechaVAMPP(s[3])), toro: p[0], fd: fechaVAMPP(p[2]), res: p[3]});
+      else if (s.length === 4 && /^\d+$/.test(s[2]) && /^\d+$/.test(s[3])) a.serv.push({lact: +s[2], f: nota(fechaVAMPP(s[3])), toro: p[0], fd: fechaVAMPP(p[2]), res: p[3], ins: p[4] || ""});
       else if (s.length === 4 && s[2] === "GYN") a.gyn.push({f: nota(fechaVAMPP(s[3])), cod: p[0], nota: arreglarÑ(p[3]), dias: p[4]});
       else if (s.length === 4 && s[2] === "CSCORE") a.cc.push({f: fechaVAMPP(s[3]), v: parseFloat(v)});
       else if (s.length === 4 && s[2] === "SOMCEL") a.ccs.push({f: fechaVAMPP(s[3]), v: parseFloat(v)});
-      else if (s.length === 4 && s[2] === "PROEFM") a.leche.push({f: nota(fechaVAMPP(s[3])), v: parseFloat(p[0])});
+      else if (s.length === 4 && s[2] === "PROEFM") a.leche.push({f: nota(fechaVAMPP(s[3])), v: parseFloat(p[0]), vrel: parseFloat(p[3]), pdc: parseFloat(String(p[4] || "").replace("*", ""))});
+      else if (s.length === 4 && s[2] === "GROUP") a.lotes.push({f: fechaVAMPP(s[3]), cod: p[0] || "", nombre: arreglarÑ(p[1])});
+      else if (s.length === 4 && s[2] === "GEW") a.pesos.push({f: fechaVAMPP(s[3]), v: parseFloat(v)});
       else if (s.length === 4 && s[2] === "ZIEK") a.salud.push({f: nota(fechaVAMPP(s[3])), tipo: p[0], cuartos: p[1] || "", prod: arreglarÑ(p[6])});
       else if (s.length === 5 && s[2] === "VAC") a.vac.push({f: fechaVAMPP(s[4]), vac: s[3]});
     });
@@ -1544,10 +1546,11 @@ function leerVAMPP(txt){
       // Historial completo, en arreglos cortos para que quepa en el equipo
       anim[num] = {ident: arreglarÑ(p[5]), nac: isoV(nac), padre: p[1] || "", madre: arreglarÑ(p[2]), raza: raza(p[3]), reg: p[4] || "", lact, baja,
         partos: Object.entries(a.partos).filter(([, x]) => x.f).map(([k, x]) => [+k, isoV(x.f), x.sexo, x.cria]).sort((x, y) => x[1].localeCompare(y[1])),
-        serv: ord(a.serv).map(x => [x.lact, isoV(x.f), x.toro, isoV(x.fd), x.res]),
+        serv: ord(a.serv).map(x => [x.lact, isoV(x.f), x.toro, isoV(x.fd), x.res, x.ins]),
         gyn: ord(a.gyn).map(x => [isoV(x.f), x.cod, x.nota, x.dias]),
         sec: Object.entries(a.secados).filter(([, x]) => x.f).map(([k, x]) => [+k, isoV(x.f), x.prod, x.nota]).sort((x, y) => x[1].localeCompare(y[1])),
-        leche: ord(a.leche).filter(x => !isNaN(x.v)).map(x => [isoV(x.f), x.v]),
+        leche: ord(a.leche).filter(x => !isNaN(x.v)).map(x => [isoV(x.f), x.v, isNaN(x.vrel) ? null : x.vrel, isNaN(x.pdc) ? null : x.pdc]),
+        lotes: ord(a.lotes).map(x => [isoV(x.f), x.cod, x.nombre]), pesos: ord(a.pesos).filter(x => !isNaN(x.v)).map(x => [isoV(x.f), x.v]),
         ccs: ord(a.ccs).filter(x => !isNaN(x.v)).map(x => [isoV(x.f), x.v]),
         cc: ord(a.cc).filter(x => !isNaN(x.v)).map(x => [isoV(x.f), x.v]),
         salud: ord(a.salud).map(x => [isoV(x.f), x.tipo, x.cuartos, x.prod]),
@@ -1574,7 +1577,7 @@ function leerVAMPP(txt){
     if (!total) return;
     data.sort((x, y) => (+x[0] || 0) - (+y[0] || 0));
     const fi = ficha || [];
-    const hist = {v: 1, ultimo: isoV(ultimo), animales: anim,
+    const hist = {v: 2, ultimo: isoV(ultimo), animales: anim,
       finca: {nombre, dir: arreglarÑ(fi[1]), ciudad: arreglarÑ(fi[2]), tel: fi[3] || "", propietario: arreglarÑ(fi[11]).replace(/\s*ENTRGA.*$/i, ""),
         email: fi.find(x => /@/.test(x)) || "", agrupacion: agrup, area, inicio: isoV(inicio)},
       indicadores: G, contactos: CONT, inseminadores: INSEM, entregas: ENTR,
@@ -2627,8 +2630,8 @@ const ICON = {mas:'<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><cir
   ordeno:'<svg viewBox="0 0 24 24"><path d="M9 3h6l-1 4v2.5c2.4 1 4 3.4 4 6.2V21H6v-5.3c0-2.8 1.6-5.2 4-6.2V7z"/><path d="M6 15h12"/></svg>'};
 let MOSTRAR_ASIST = store.get("asist", true);
 const TABS = () => [["hoy","Hoy",pantallaHoy],["vacas","Vacas",pantallaVacas],["repro","Repro",pantallaRepro],["crianza","Crianza",pantallaCrianza],["mas","Más",pantallaMas]];
-const PANTALLAS = () => [...TABS(), ["graficos","Análisis",pantallaExplorar], ["asistente","Asistente",pantallaAsistente], ["datos","Datos",pantallaDatos], ["ordeno","Ordeño",pantallaOrdeno], ["calor","Calor",pantallaCalor], ["anotar","Anotar",pantallaAnotar], ["vampp","VAMPP",pantallaVAMPP]];
-const EN_MAS = ["mas","graficos","asistente","datos","ordeno","vampp"];
+const PANTALLAS = () => [...TABS(), ["graficos","Análisis",pantallaExplorar], ["asistente","Asistente",pantallaAsistente], ["datos","Datos",pantallaDatos], ["ordeno","Ordeño",pantallaOrdeno], ["calor","Calor",pantallaCalor], ["anotar","Anotar",pantallaAnotar], ["vampp","VAMPP",pantallaVAMPP], ["reportes","Reportes",pantallaReportes]];
+const EN_MAS = ["mas","graficos","asistente","datos","ordeno","vampp","reportes"];
 /* ================= Ordeño y calidad de leche (reportes del sistema de ordeño) ================= */
 function datosOrdeno(){
   const A = D.afi || {};
@@ -2924,17 +2927,659 @@ function pantallaVAMPP(){
   const cuerpo = ap === "resumen" ? vpResumen(H, v) : ap === "vaca" ? vpVaca(H) : ap === "toros" ? vpToros(H) : ap === "finca" ? vpFinca(H, v) : vpLista(H, ap);
   return `<p class="hello">Historial de VAMPP</p>
     <p class="note" style="margin-top:0">Finca ${esc(v.finca)}${v.nombre ? " · " + esc(v.nombre) : ""} · respaldo del ${fV(v.respaldo)} · datos hasta el ${fV(H.ultimo)}</p>
+    <div class="actionsrow" style="margin-top:0"><button class="btn ghost" data-tab="reportes">Ver los reportes de VAMPP</button></div>
     <div class="chips" role="group" aria-label="Apartado">${VP_APS.map(([k, l]) => `<button class="chip" data-vp-ap="${k}" aria-pressed="${k === ap}">${l}</button>`).join("")}</div>
     <h2>${esc((VP_APS.find(x => x[0] === ap) || ["", ""])[1])}</h2>${cuerpo}
     <p class="note">Los nombres de los exámenes y problemas se tradujeron de los códigos de VAMPP; el código original va al lado cuando hace falta.</p>`;
 }
+/* ================= Reportes de VAMPP: el mismo menú de VAMPP, calculado con el respaldo ================= */
+ICON.reportes = '<svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5M9 9h3"/></svg>';
+const RP = {id: null, n: 50, p: {}, abiertos: {}};
+const DEMO_TXT = "Versión demo gratuita";
+const RPC = {H: null, m: null};
+const dISO = (a, b) => Math.round((isoAFecha(b) - isoAFecha(a)) / 864e5);
+const mesesEntre = (a, b) => dISO(a, b) / 30.4;
+const promN = l => { const v = l.filter(x => x != null && !isNaN(x)); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+const pctTxt = (a, b) => b ? Math.round(100 * a / b) + " %" : "—";
+const masDias = (s, n) => iso(addDays(isoAFecha(s), n));
+const masMeses = (s, n) => { const d = isoAFecha(s); d.setMonth(d.getMonth() + n); return iso(d); };
+const mesTxt = m => { const [y, mo] = m.split("-"); return ["ene","feb","mar","abr","may","jun","jul","ago","set","oct","nov","dic"][+mo - 1] + " " + y.slice(2); };
+// Arma, una sola vez por respaldo, las lactancias, servicios y producción de cada animal
+function rpModelo(H){
+  if (RPC.H === H) return RPC.m;
+  const U = H.ultimo || iso(new Date());
+  const A = Object.entries(H.animales).map(([num, a]) => {
+    const x = {...a, num, lotes: a.lotes || [], pesos: a.pesos || []};
+    x.servR = a.serv.map((s, i) => ({lact: s[0], f: s[1], toro: s[2], fd: s[3], res: resultadoServ(a, i), ins: s[5] || ""}));
+    const partos = a.partos.slice().sort((p, q) => p[1].localeCompare(q[1]));
+    x.lacts = partos.map((p, i) => {
+      const sig = partos[i + 1] ? partos[i + 1][1] : null;
+      const sec = (a.sec.find(s => s[0] === p[0] && s[1] >= p[1] && (!sig || s[1] < sig)) || [])[1] || null;
+      const fin = sec || sig || null, hasta = fin || U;
+      const ctrl = a.leche.filter(c => c[0] >= p[1] && c[0] <= hasta).map(c => ({f: c[0], d: dISO(p[1], c[0]), kg: c[1], vrel: c[2], pdc: c[3]}));
+      const serv = x.servR.filter(s => s.lact === p[0] + 1 && s.f > p[1]);
+      const conc = serv.filter(s => s.res === "+").pop() || null;
+      return {k: p[0], parto: p[1], sexo: p[2], cria: p[3], sig, sec, fin, dur: dISO(p[1], hasta), terminada: !!fin, ctrl, serv, conc,
+        iep: sig ? dISO(p[1], sig) : null, da: conc ? dISO(p[1], conc.f) : null};
+    });
+    // Servicios de novilla (antes del primer parto)
+    x.servNov = x.servR.filter(s => s.lact === 1 && (!partos[0] || s.f < partos[0][1]));
+    x.ult = x.lacts[x.lacts.length - 1] || null;
+    return x;
+  });
+  const vivoEn = (a, f) => (!a.nac || a.nac <= f) && (!a.baja || !a.baja.f || a.baja.f > f);
+  RPC.H = H; RPC.m = {H, U, A, act: A.filter(a => !a.baja), vivoEn};
+  return RPC.m;
+}
+// Producción acumulada de una lactancia hasta cierto día, uniendo los controles con líneas rectas
+function rpProd(L, hastaDia){
+  const c = L.ctrl.filter(x => x.d >= 0).sort((p, q) => p.d - q.d); if (!c.length) return null;
+  const lim = Math.min(hastaDia, L.dur); if (lim <= 0) return 0;
+  let tot = 0, d0 = 0, v0 = c[0].kg;
+  for (const x of c){ if (x.d > lim) break; tot += (x.d - d0) * (v0 + x.kg) / 2; d0 = x.d; v0 = x.kg; }
+  if (d0 < lim){ const sig = c.find(x => x.d > lim); const vf = sig ? v0 + (sig.kg - v0) * (lim - d0) / (sig.d - d0) : v0; tot += (lim - d0) * (v0 + vf) / 2; }
+  return tot;
+}
+// Estado reproductivo de una vaca en el último dato del respaldo
+function rpEstado(a, U){
+  if (a.baja) return a.baja.tipo;
+  const L = a.ult;
+  if (!L){ const s = a.servNov; const u = s[s.length - 1]; const e = a.nac ? mesesEntre(a.nac, U) : null;
+    return {cat: e != null && e < 12 ? "Ternera" : "Novilla", est: u ? (u.res === "+" ? "Preñada" : u.res === "-" ? "Vacía" : "Inseminada") : "Sin servicio", u, edad: e}; }
+  const u = L.serv[L.serv.length - 1];
+  const ab = u && u.res === "+" && a.gyn.some(g => g[0] > u.f && (g[1] === "DP.61" || /aborto/i.test(g[2])));
+  return {cat: L.sec ? "Seca" : "En ordeño", est: u ? (ab ? "Abortó" : u.res === "+" ? "Preñada" : u.res === "-" ? "Vacía" : "Inseminada") : "Sin servicio", u, del: dISO(L.parto, U), L,
+    dp: u && u.res === "+" && !ab ? dISO(u.f, U) : null};
+}
+const demo = falta => ({demo: `${DEMO_TXT}: este reporte todavía no tiene datos, porque el respaldo de VAMPP no trae ${falta}. Queda listo para cuando se agreguen.`});
+const limitado = txt => `${DEMO_TXT}: ${txt}`;
+// ---- Parámetros: un período, varios períodos, una fecha, una vaca, un código ----
+function rpParam(M, k){
+  const p = RP.p, U = M.U;
+  if (k === "desde") return p.desde || masMeses(U, -12);
+  if (k === "hasta") return p.hasta || U;
+  if (k === "meses") return p.meses || 12;
+  return p[k];
+}
+const enRango = (f, M) => f && f > rpParam(M, "desde") && f <= rpParam(M, "hasta");
+function mesesHasta(M){ const n = rpParam(M, "meses"), out = []; let m = rpParam(M, "hasta").slice(0, 7);
+  for (let i = 0; i < n; i++){ out.unshift(m); const d = isoAFecha(m + "-15"); d.setMonth(d.getMonth() - 1); m = iso(d).slice(0, 7); } return out; }
+const fechasControl = M => [...new Set(M.A.flatMap(a => a.leche.map(c => c[0])))].sort().reverse();
+const fechasCCS = M => [...new Set(M.A.flatMap(a => a.ccs.map(c => c[0])))].sort().reverse();
+const fechasCC = M => [...new Set(M.A.flatMap(a => a.cc.map(c => c[0])))].sort().reverse();
+// ---- Los reportes ----
+function rEstadoActual(M){
+  const vacas = [], rem = [];
+  M.act.forEach(a => { const e = rpEstado(a, M.U); (e.cat === "Ternera" || e.cat === "Novilla" ? rem : vacas).push([a, e]); });
+  const cuenta = (l, f) => { const c = {}; l.forEach(([a, e]) => { const k = f(a, e); c[k] = (c[k] || 0) + 1; }); return Object.entries(c).sort((x, y) => y[1] - x[1]); };
+  const tbl = (t, l, f) => ({titulo: t, cols: ["Estado", "Animales", "%"], rows: cuenta(l, f).map(([k, n]) => [k, n, pctTxt(n, l.length)])});
+  const rango = d => d == null ? "—" : d <= 60 ? "0 a 60 días" : d <= 150 ? "61 a 150 días" : d <= 305 ? "151 a 305 días" : "Más de 305 días";
+  return {kpis: [["Vacas", vacas.length], ["En ordeño", vacas.filter(([, e]) => e.cat === "En ordeño").length], ["Secas", vacas.filter(([, e]) => e.cat === "Seca").length],
+      ["Vacas preñadas", pctTxt(vacas.filter(([, e]) => e.est === "Preñada").length, vacas.length)], ["Reemplazos", rem.length], ["Novillas preñadas", rem.filter(([, e]) => e.est === "Preñada").length]],
+    tablas: [tbl("Vacas por estado reproductivo", vacas, (a, e) => e.cat + " · " + e.est), tbl("Vacas en ordeño por días en leche", vacas.filter(([, e]) => e.cat === "En ordeño"), (a, e) => rango(e.del)),
+      tbl("Reemplazos por estado", rem, (a, e) => e.cat + " · " + e.est),
+      tbl("Reemplazos por edad", rem, (a, e) => e.edad == null ? "Sin fecha de nacimiento" : e.edad < 6 ? "Menos de 6 meses" : e.edad < 12 ? "6 a 12 meses" : e.edad < 18 ? "12 a 18 meses" : e.edad < 24 ? "18 a 24 meses" : "Más de 24 meses")]};
+}
+function rIndicadores(M){
+  const d = rpParam(M, "desde"), h = rpParam(M, "hasta"), en = f => f && f > d && f <= h;
+  const L = M.A.flatMap(a => a.lacts.map(l => ({a, l})));
+  const conc = L.filter(x => x.l.conc && en(x.l.conc.f));
+  const pri = L.filter(x => x.l.serv[0] && en(x.l.serv[0].f) && x.l.serv[0].res);
+  const nov = M.A.filter(a => a.lacts[0] && en(a.lacts[0].parto) && a.nac);
+  const novS = M.A.filter(a => a.servNov[0] && en(a.servNov[0].f) && a.nac);
+  const novC = M.A.filter(a => { const c = a.servNov.filter(s => s.res === "+").pop(); return c && en(c.f) && a.nac; });
+  const iep = L.filter(x => x.l.sig && en(x.l.sig));
+  return {kpis: [["Días abiertos", n0(promN(conc.map(x => x.l.da))), `${conc.length} preñeces · Dos Pinos 136`], ["Servicios por preñez", n1(promN(conc.map(x => x.l.serv.length))), "Dos Pinos 2,2"],
+      ["Preñez al primer servicio", pctTxt(pri.filter(x => x.l.serv[0].res === "+").length, pri.length)], ["Intervalo entre partos", n0(promN(iep.map(x => x.l.iep))), "días · Dos Pinos 419"],
+      ["Edad al primer servicio", n1(promN(novS.map(a => mesesEntre(a.nac, a.servNov[0].f)))), "meses"],
+      ["Edad a la preñez", n1(promN(novC.map(a => mesesEntre(a.nac, a.servNov.filter(s => s.res === "+").pop().f)))), "meses"],
+      ["Edad al primer parto", n1(promN(nov.map(a => mesesEntre(a.nac, a.lacts[0].parto)))), "meses · Dos Pinos 31,9"],
+      ["Servicios por preñez en novillas", n1(promN(novC.map(a => a.servNov.length)))]],
+    tablas: [{titulo: "Preñeces de vacas en el período", cols: ["Vaca", "Lactancia", "Parto", "Preñez", "Días abiertos", "Servicios", "Toro"],
+      rows: conc.sort((x, y) => y.l.conc.f.localeCompare(x.l.conc.f)).map(x => [x.a.num, x.l.k, fV(x.l.parto), fV(x.l.conc.f), x.l.da, x.l.serv.length, nombreToro(M.H, x.l.conc.toro)]), num: 0}]};
+}
+function rProdCrecSalud(M){
+  const ult = fechasControl(M)[0], ccs = fechasCCS(M)[0];
+  const pes = M.act.map(a => a.leche.find(c => c[0] === ult)).filter(Boolean);
+  const cs = M.act.map(a => a.ccs.find(c => c[0] === ccs)).filter(Boolean);
+  const d12 = masMeses(M.U, -12);
+  const mast = M.A.reduce((s, a) => s + a.salud.filter(x => x[0] > d12 && x[1] === "M").length, 0);
+  const bajas = M.A.filter(a => a.baja && a.baja.f > d12);
+  const pes12 = M.A.reduce((s, a) => s + a.pesos.filter(x => x[0] > d12).length, 0);
+  return {kpis: [["Último control", ult ? fV(ult) : "—"], ["Vacas pesadas", pes.length], ["Leche promedio", pes.length ? n1(promN(pes.map(c => c[1]))) + " kg" : "—"],
+      ["PDC promedio", n1(promN(pes.map(c => c[3]))) + " kg"], ["Última prueba de células", ccs ? fV(ccs) : "—"], ["Células promedio", n0(promN(cs.map(c => c[1]))) + " mil"],
+      ["Vacas con más de 200 mil", pctTxt(cs.filter(c => c[1] > 200).length, cs.length)], ["Mastitis en 12 meses", mast], ["Bajas en 12 meses", bajas.length], ["Pesajes de crecimiento en 12 meses", pes12]],
+    nota: pes12 ? "" : limitado("el respaldo casi no trae pesajes de terneras y novillas, así que el crecimiento no se puede resumir.")};
+}
+function rResumenIndividual(M){
+  const ult = fechasControl(M)[0];
+  const rows = M.act.map(a => { const e = rpEstado(a, M.U); if (e.cat === "Ternera" || e.cat === "Novilla") return null;
+    const c = a.leche.filter(x => e.L && x[0] >= e.L.parto).pop(), s = a.ccs[a.ccs.length - 1], cc = a.cc[a.cc.length - 1];
+    return [a.num, a.lact, e.cat, e.del, e.est, e.dp ?? "", e.L ? e.L.serv.length : "", c ? n1(c[1]) : "", c && c[3] != null ? n1(c[3]) : "", c && c[2] != null ? c[2] : "", s ? n0(s[1]) : "", cc ? String(cc[1]).replace(".", ",") : ""]; }).filter(Boolean);
+  return {tablas: [{titulo: "Vacas del hato", cols: ["Vaca", "Lact.", "Situación", "Días en leche", "Estado", "Días preñez", "Servicios", "Kg último control", "PDC", "Vrel", "Células (mil)", "CC"], rows: rows.sort((x, y) => (+x[0]) - (+y[0])), num: 0}],
+    nota: ult ? `Producción del último control de cada vaca. El último control del hato es del ${fV(ult)}.` : ""};
+}
+function rEstadoGeneral(M){
+  const c = {}; M.act.forEach(a => { const e = rpEstado(a, M.U); const k = e.cat + (e.cat === "Novilla" ? (e.est === "Preñada" ? " preñada" : " vacía o sin servicio") : ""); c[k] = (c[k] || 0) + 1; });
+  const d12 = masMeses(M.U, -12), entradas = M.A.filter(a => a.nac && a.nac > d12).length, bajas = M.A.filter(a => a.baja && a.baja.f > d12);
+  const porL = {}; M.act.filter(a => a.lact).forEach(a => { const k = a.lact >= 4 ? "4 o más" : String(a.lact); porL[k] = (porL[k] || 0) + 1; });
+  return {kpis: [["Animales en la finca", M.act.length], ["Nacidas en 12 meses", entradas], ["Bajas en 12 meses", bajas.length]],
+    tablas: [{titulo: "Inventario", cols: ["Categoría", "Animales", "%"], rows: Object.entries(c).sort((x, y) => y[1] - x[1]).map(([k, n]) => [k, n, pctTxt(n, M.act.length)])},
+      {titulo: "Vacas por número de lactancia", cols: ["Lactancia", "Vacas"], rows: Object.entries(porL).sort().map(([k, n]) => [k, n])}]};
+}
+function rVistaGeneral(M){
+  const lote = a => { const l = a.lotes[a.lotes.length - 1]; return l && l[2] ? l[2] : "Sin lote"; };
+  const g = {}; M.act.forEach(a => { const e = rpEstado(a, M.U); const k = lote(a); (g[k] = g[k] || {n: 0, ord: 0, sec: 0, nov: 0, ter: 0, pr: 0}); const x = g[k]; x.n++;
+    if (e.cat === "En ordeño") x.ord++; else if (e.cat === "Seca") x.sec++; else if (e.cat === "Novilla") x.nov++; else x.ter++; if (e.est === "Preñada") x.pr++; });
+  return {tablas: [{titulo: "Animales por lote o potrero", cols: ["Lote", "Total", "En ordeño", "Secas", "Novillas", "Terneras", "Preñadas"], rows: Object.entries(g).sort((x, y) => y[1].n - x[1].n).map(([k, x]) => [k, x.n, x.ord, x.sec, x.nov, x.ter, x.pr])},
+    {titulo: "Animales con su lote", cols: ["Vaca", "Lote", "Desde", "Situación", "Estado"], rows: M.act.map(a => { const e = rpEstado(a, M.U), l = a.lotes[a.lotes.length - 1]; return [a.num, lote(a), l ? fV(l[0]) : "—", e.cat, e.est]; }).sort((x, y) => (+x[0]) - (+y[0])), num: 0}]};
+}
+// Reproducción
+function rParidos(M){
+  const L = M.A.flatMap(a => a.lacts.map((l, i) => ({a, l, ant: a.lacts[i - 1] || null}))).filter(x => enRango(x.l.parto, M));
+  const rows = L.sort((x, y) => y.l.parto.localeCompare(x.l.parto)).map(({a, l, ant}) => [a.num, l.k, fV(l.parto), SEXO(l.sexo), ant ? ant.iep : "", ant && ant.da != null ? ant.da : "", ant ? ant.serv.length : (a.servNov.length || ""), l.k === 1 && a.nac ? n1(mesesEntre(a.nac, l.parto)) : ""]);
+  const ants = L.filter(x => x.ant);
+  return {kpis: [["Partos", L.length], ["Hembras", pctTxt(L.filter(x => x.l.sexo === "H").length, L.length)], ["Primer parto", L.filter(x => x.l.k === 1).length],
+      ["Intervalo entre partos", n0(promN(ants.map(x => x.ant.iep))) + " días"], ["Días abiertos", n0(promN(ants.map(x => x.ant.da))) + " días"], ["Servicios por preñez", n1(promN(ants.map(x => x.ant.serv.length)))],
+      ["Edad al primer parto", n1(promN(L.filter(x => x.l.k === 1 && x.a.nac).map(x => mesesEntre(x.a.nac, x.l.parto)))) + " meses"]],
+    tablas: [{titulo: "Animales paridos", cols: ["Vaca", "Lactancia", "Parto", "Cría", "Intervalo (días)", "Días abiertos", "Servicios", "Edad 1er parto (meses)"], rows, num: 0}]};
+}
+function porMes(M, items){ const ms = mesesHasta(M), g = Object.fromEntries(ms.map(m => [m, []])); items.forEach(([f, v]) => { const m = f && f.slice(0, 7); if (m in g) g[m].push(v); }); return {ms, g}; }
+function rParidosVarios(M){
+  const {ms, g} = porMes(M, M.A.flatMap(a => a.lacts.map((l, i) => [l.parto, {l, ant: a.lacts[i - 1]}])));
+  const rows = ms.map(m => { const l = g[m]; const an = l.filter(x => x.ant); return [mesTxt(m), l.length, l.filter(x => x.l.sexo === "H").length, l.filter(x => x.l.k === 1).length, n0(promN(an.map(x => x.ant.iep))), n0(promN(an.map(x => x.ant.da))), n1(promN(an.map(x => x.ant.serv.length)))]; });
+  return {chart: {type: "bar", labels: ms.map(mesTxt), series: [{name: "Partos", data: ms.map(m => g[m].length), color: "var(--accent)"}], unit: ""},
+    tablas: [{titulo: "Partos por mes", cols: ["Mes", "Partos", "Hembras", "Primer parto", "Intervalo (días)", "Días abiertos", "Servicios por preñez"], rows}]};
+}
+const todosServ = M => M.A.flatMap(a => a.servR.map((s, i) => { const grupo = a.servR.filter(x => x.lact === s.lact); return {a, s, nro: grupo.indexOf(s) + 1, nov: !a.lacts.some(l => l.k === s.lact - 1)}; }));
+function rServidos(M){
+  const S = todosServ(M).filter(x => enRango(x.s.f, M)), d = S.filter(x => x.s.res);
+  const porN = [1, 2, 3].map(n => { const l = d.filter(x => n < 3 ? x.nro === n : x.nro >= 3); return [n < 3 ? n + "º servicio" : "3º o más", l.length, l.filter(x => x.s.res === "+").length, pctTxt(l.filter(x => x.s.res === "+").length, l.length)]; });
+  return {kpis: [["Servicios", S.length], ["Animales servidos", new Set(S.map(x => x.a.num)).size], ["Concepciones", d.filter(x => x.s.res === "+").length], ["Tasa de concepción", pctTxt(d.filter(x => x.s.res === "+").length, d.length)],
+      ["Sin diagnóstico", S.length - d.length], ["Vacas / novillas", S.filter(x => !x.nov).length + " / " + S.filter(x => x.nov).length]],
+    tablas: [{titulo: "Concepción por número de servicio", cols: ["Servicio", "Con diagnóstico", "Preñaron", "Concepción"], rows: porN},
+      {titulo: "Animales servidos", cols: ["Fecha", "Vaca", "Tipo", "Servicio no.", "Toro", "Inseminador", "Resultado"], rows: S.sort((x, y) => y.s.f.localeCompare(x.s.f)).map(x => [fV(x.s.f), x.a.num, x.nov ? "Novilla" : "Vaca", x.nro, nombreToro(M.H, x.s.toro), nombreIns(M.H, x.s.ins), RES(x.s.res)]), num: 1}]};
+}
+function rServidosVarios(M){
+  const {ms, g} = porMes(M, todosServ(M).map(x => [x.s.f, x]));
+  const rows = ms.map(m => { const l = g[m], d = l.filter(x => x.s.res), p = d.filter(x => x.s.res === "+").length; return [mesTxt(m), l.length, new Set(l.map(x => x.a.num)).size, p, pctTxt(p, d.length)]; });
+  return {chart: {type: "bar", labels: ms.map(mesTxt), series: [{name: "Servicios", data: ms.map(m => g[m].length), color: "var(--accent)"}, {name: "Concepciones", data: ms.map(m => g[m].filter(x => x.s.res === "+").length), color: "var(--straw)"}], unit: ""},
+    tablas: [{titulo: "Servicios y concepciones por mes", cols: ["Mes", "Servicios", "Animales", "Concepciones", "Tasa de concepción"], rows}]};
+}
+const nombreIns = (H, i) => { const x = (H.inseminadores || [])[+i - 1]; return x ? x.nombre : i ? "No. " + i : "—"; };
+function rTasasConcepcion(M){
+  const S = todosServ(M).filter(x => enRango(x.s.f, M) && x.s.res);
+  const tabla = (titulo, clave, nombre) => { const g = {}; S.forEach(x => { const k = clave(x); (g[k] = g[k] || {n: 0, p: 0, p1: 0, n1: 0}); g[k].n++; if (x.s.res === "+") g[k].p++; if (x.nro === 1){ g[k].n1++; if (x.s.res === "+") g[k].p1++; } });
+    return {titulo, cols: [titulo.split(" ").pop() === "toro" ? "Toro" : "Inseminador", "Servicios", "Preñaron", "Concepción", "1er servicio"], rows: Object.entries(g).sort((x, y) => y[1].n - x[1].n).map(([k, v]) => [nombre(k), v.n, v.p, pctTxt(v.p, v.n), pctTxt(v.p1, v.n1)])}; };
+  return {tablas: [tabla("Concepción por toro", x => x.s.toro, k => nombreToro(M.H, k)), tabla("Concepción por inseminador", x => x.s.ins, k => nombreIns(M.H, k))], nota: "Solo cuentan los servicios con resultado conocido."};
+}
+function rInsemPorToro(M){
+  const S = todosServ(M).filter(x => enRango(x.s.f, M)).sort((x, y) => x.s.toro.localeCompare(y.s.toro) || y.s.f.localeCompare(x.s.f));
+  return {tablas: [{titulo: "Inseminaciones por toro", cols: ["Toro", "Fecha", "Vaca", "Servicio no.", "Inseminador", "Resultado"], rows: S.map(x => [nombreToro(M.H, x.s.toro), fV(x.s.f), x.a.num, x.nro, nombreIns(M.H, x.s.ins), RES(x.s.res)]), num: 2}]};
+}
+function rCuadroFertilidad(M, rem){
+  const rows = M.act.map(a => { const e = rpEstado(a, M.U);
+    if (rem ? !(e.cat === "Novilla" || e.cat === "Ternera") : (e.cat === "Novilla" || e.cat === "Ternera")) return null;
+    if (rem && (e.edad == null || e.edad < 12)) return null;
+    const u = e.u, serv = rem ? a.servNov.length : e.L.serv.length;
+    const prob = rem ? (e.est !== "Preñada" && e.edad > 18 ? "Más de 18 meses sin preñar" : serv >= 3 && e.est !== "Preñada" ? "3 o más servicios" : "")
+      : e.est === "Preñada" ? "" : e.del > 90 && !serv ? "Más de 90 días sin servicio" : serv >= 3 ? "3 o más servicios" : e.del > 150 ? "Más de 150 días abierta" : "";
+    return [a.num, rem ? n1(e.edad) : e.del, e.est, serv, u ? fV(u.f) : "—", u ? dISO(u.f, M.U) : "", u ? nombreToro(M.H, u.toro) : "—", prob]; }).filter(Boolean);
+  rows.sort((x, y) => (y[7] ? 1 : 0) - (x[7] ? 1 : 0) || (+y[1]) - (+x[1]));
+  return {kpis: [[rem ? "Novillas" : "Vacas", rows.length], ["Preñadas", pctTxt(rows.filter(r => r[2] === "Preñada").length, rows.length)], ["Con problema", rows.filter(r => r[7]).length]],
+    tablas: [{titulo: rem ? "Cuadro de fertilidad de reemplazos (12 meses o más)" : "Cuadro de fertilidad de vacas", cols: ["Vaca", rem ? "Edad (meses)" : "Días en leche", "Estado", "Servicios", "Último servicio", "Días desde el servicio", "Toro", "Atención"], rows, num: 0}]};
+}
+function rPartosAbortos(M){
+  const P = M.A.flatMap(a => a.lacts.filter(l => enRango(l.parto, M)).map(l => [l.parto, a.num, "Parto", "Lactancia " + l.k + " · " + SEXO(l.sexo)]));
+  const Ab = M.A.flatMap(a => a.gyn.filter(g => enRango(g[0], M) && (g[1] === "DP.61" || /aborto/i.test(g[2]))).map(g => [g[0], a.num, "Aborto", g[2] || g[1]]));
+  const pr = M.A.reduce((s, a) => s + a.lacts.filter(l => l.conc && enRango(l.conc.f, M)).length, 0);
+  return {kpis: [["Partos", P.length], ["Hembras", pctTxt(P.filter(x => /Hembra/.test(x[3])).length, P.length)], ["Machos", pctTxt(P.filter(x => /Macho/.test(x[3])).length, P.length)], ["Abortos", Ab.length], ["Abortos por preñez", pctTxt(Ab.length, pr + Ab.length)]],
+    tablas: [{titulo: "Partos y abortos", cols: ["Fecha", "Vaca", "Evento", "Detalle"], rows: [...P, ...Ab].sort((x, y) => y[0].localeCompare(x[0])).map(r => [fV(r[0]), r[1], r[2], r[3]]), num: 1}]};
+}
+function rPartosAbortosVarios(M){
+  const {ms, g} = porMes(M, [...M.A.flatMap(a => a.lacts.map(l => [l.parto, {t: "p", s: l.sexo}])), ...M.A.flatMap(a => a.gyn.filter(x => x[1] === "DP.61" || /aborto/i.test(x[2])).map(x => [x[0], {t: "a"}]))]);
+  return {chart: {type: "bar", labels: ms.map(mesTxt), series: [{name: "Partos", data: ms.map(m => g[m].filter(x => x.t === "p").length), color: "var(--accent)"}, {name: "Abortos", data: ms.map(m => g[m].filter(x => x.t === "a").length), color: "var(--alta, #c0392b)"}], unit: ""},
+    tablas: [{titulo: "Partos y abortos por mes", cols: ["Mes", "Partos", "Hembras", "Machos", "Abortos"], rows: ms.map(m => [mesTxt(m), g[m].filter(x => x.t === "p").length, g[m].filter(x => x.s === "H").length, g[m].filter(x => x.s === "M").length, g[m].filter(x => x.t === "a").length])}]};
+}
+function rPatronAnterior(M){
+  const P = M.A.flatMap(a => a.lacts.map(l => l.parto)); const anos = [...new Set(P.map(f => f.slice(0, 4)))].sort().slice(-6);
+  const meses = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+  return {tablas: [{titulo: "Partos por mes de cada año", cols: ["Mes", ...anos, "Promedio"], rows: meses.map(m => { const v = anos.map(y => P.filter(f => f.slice(0, 7) === y + "-" + m).length); return [mesTxt(anos[0] + "-" + m).split(" ")[0], ...v, n1(promN(v))]; })}],
+    chart: {type: "bar", labels: meses.map(m => mesTxt("2000-" + m).split(" ")[0]), series: [{name: "Promedio", data: meses.map(m => Math.round(10 * promN(anos.map(y => P.filter(f => f.slice(0, 7) === y + "-" + m).length))) / 10), color: "var(--accent)"}], unit: ""}};
+}
+function rPatronProximo(M){
+  const esp = M.act.map(a => { const e = rpEstado(a, M.U); return e.est === "Preñada" && e.u ? {a, e, f: masDias(e.u.f, 280)} : null; }).filter(Boolean);
+  const ms = []; for (let i = 0; i < 6; i++) ms.push(masMeses(M.U, i).slice(0, 7));
+  return {chart: {type: "bar", labels: ms.map(mesTxt), series: [{name: "Partos esperados", data: ms.map(m => esp.filter(x => x.f.slice(0, 7) === m).length), color: "var(--accent)"}], unit: ""},
+    tablas: [{titulo: "Partos esperados en los próximos 6 meses", cols: ["Parto esperado", "Vaca", "Tipo", "Preñada desde", "Toro"], rows: esp.filter(x => x.f.slice(0, 7) <= ms[5]).sort((x, y) => x.f.localeCompare(y.f)).map(x => [fV(x.f), x.a.num, x.e.cat === "Novilla" ? "Novilla" : "Vaca", fV(x.e.u.f), nombreToro(M.H, x.e.u.toro)]), num: 1}],
+    nota: `Los 6 meses se cuentan desde el último dato del respaldo (${fV(M.U)}). Parto esperado: servicio que preñó + 280 días.`};
+}
+function rLongitudPrenez(M){
+  const l = M.A.flatMap(a => a.lacts.map((L, i) => { const c = i === 0 ? a.servNov.filter(s => s.res === "+").pop() : a.lacts[i - 1].conc; return c && enRango(L.parto, M) ? [a.num, fV(c.f), fV(L.parto), dISO(c.f, L.parto), nombreToro(M.H, c.toro)] : null; })).filter(r => r && r[3] > 200 && r[3] < 320);
+  return {kpis: [["Preñeces", l.length], ["Duración promedio", n0(promN(l.map(r => r[3]))) + " días"], ["Más corta", l.length ? Math.min(...l.map(r => r[3])) : "—"], ["Más larga", l.length ? Math.max(...l.map(r => r[3])) : "—"]],
+    tablas: [{titulo: "Duración de cada preñez", cols: ["Vaca", "Servicio", "Parto", "Días", "Toro"], rows: l, num: 0}]};
+}
+function rBuscarCodigo(M, tipo){
+  const cods = tipo === "gyn" ? [...new Set(M.A.flatMap(a => a.gyn.map(g => g[1])))].sort() : [...new Set(M.A.flatMap(a => a.salud.flatMap(s => [SALUD(s[1]), s[3]].filter(Boolean))))].sort();
+  const c = RP.p.cod && cods.includes(RP.p.cod) ? RP.p.cod : cods[0];
+  const rows = tipo === "gyn" ? M.A.flatMap(a => a.gyn.filter(g => g[1] === c && enRango(g[0], M)).map(g => [fV(g[0]), a.num, COD_GYN(g[1]), g[2] || "—", g[3] || "—"]))
+    : M.A.flatMap(a => a.salud.filter(s => (SALUD(s[1]) === c || s[3] === c) && enRango(s[0], M)).map(s => [fV(s[0]), a.num, SALUD(s[1]), cuartos(s[2]), s[3] || "—"]));
+  return {opciones: {cod: cods.map(k => [k, tipo === "gyn" ? k + " · " + COD_GYN(k) : k])}, sel: {cod: c},
+    tablas: [{titulo: "Registros con el código " + (c || "—"), cols: tipo === "gyn" ? ["Fecha", "Vaca", "Examen", "Nota", "Días"] : ["Fecha", "Vaca", "Problema", "Cuartos", "Producto o diagnóstico"], rows: rows.sort((x, y) => isoDe(y[0]).localeCompare(isoDe(x[0]))), num: 1}]};
+}
+const isoDe = t => { const m = String(t).match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
+function rHijosPorToro(M){
+  const g = {};
+  M.A.forEach(a => { if (a.padre) (g[a.padre] = g[a.padre] || {hijas: 0, act: 0, h: 0, m: 0}).hijas++; if (a.padre && !a.baja) g[a.padre].act++; });
+  M.A.forEach(a => a.lacts.forEach((L, i) => { const c = i === 0 ? a.servNov.filter(s => s.res === "+").pop() : a.lacts[i - 1].conc; if (!c || !enRango(L.parto, M)) return;
+    const x = (g[c.toro] = g[c.toro] || {hijas: 0, act: 0, h: 0, m: 0}); if (L.sexo === "H") x.h++; else if (L.sexo === "M") x.m++; }));
+  return {tablas: [{titulo: "Crías por toro", cols: ["Toro", "Hijas registradas", "Hijas en la finca", "Nacidas hembras en el período", "Nacidos machos en el período"], rows: Object.entries(g).filter(([k]) => k && k !== "X").sort((x, y) => (y[1].hijas + y[1].h) - (x[1].hijas + x[1].h)).map(([k, v]) => [nombreToro(M.H, k), v.hijas, v.act, v.h, v.m])}],
+    nota: "Las hijas registradas salen del padre anotado en cada animal; los nacidos del período, del toro del servicio que preñó."};
+}
+// Parentesco simple: padre, abuelo materno y medio hermanos, con lo que trae el respaldo
+function parientes(M, a){
+  const madre = M.A.find(x => x.num === a.madre || (x.ident && x.ident === a.madre));
+  const toro = M.H.toros.find(t => t.id === a.padre);
+  return {padre: a.padre, abueloM: madre ? madre.padre : null, abueloP: toro ? toro.padre : null};
+}
+function rEndogamia(M){
+  const rows = M.act.map(a => { const e = rpEstado(a, M.U); if (!e.u) return null; const p = parientes(M, a), t = e.u.toro, tt = M.H.toros.find(x => x.id === t);
+    const rel = t === p.padre ? "Toro es el padre (50 %)" : t === p.abueloM || t === p.abueloP ? "Toro es abuelo (25 %)" : tt && tt.padre && (tt.padre === p.padre) ? "Medio hermano del padre (12,5 %)" : tt && tt.padre && tt.padre === p.abueloM ? "Pariente del abuelo materno (6,3 %)" : "";
+    return rel ? [a.num, fV(e.u.f), nombreToro(M.H, t), nombreToro(M.H, p.padre), p.abueloM ? nombreToro(M.H, p.abueloM) : "—", rel] : null; }).filter(Boolean);
+  return {kpis: [["Servicios revisados", M.act.filter(a => rpEstado(a, M.U).u).length], ["Con parentesco", rows.length]],
+    tablas: [{titulo: "Últimos servicios con parentesco", cols: ["Vaca", "Servicio", "Toro usado", "Padre de la vaca", "Abuelo materno", "Parentesco"], rows, num: 0}],
+    nota: limitado("el respaldo solo trae padre, madre y el padre de cada toro, así que el parentesco se revisa hasta abuelos. VAMPP usa el árbol completo.")};
+}
+function rSeleccionToros(M){
+  const usados = {}; M.A.forEach(a => a.servR.forEach(s => { if (s.f > masMeses(M.U, -24)) usados[s.toro] = (usados[s.toro] || 0) + 1; }));
+  const toros = Object.keys(usados).filter(k => k && !/^X/.test(k)).sort((x, y) => usados[y] - usados[x]).slice(0, 8);
+  const rows = M.act.filter(a => { const e = rpEstado(a, M.U); return e.est !== "Preñada" && (e.cat !== "Ternera") && !(e.cat === "Novilla" && (e.edad || 0) < 12); }).map(a => { const p = parientes(M, a);
+    return [a.num, nombreToro(M.H, p.padre), ...toros.map(t => { const tt = M.H.toros.find(x => x.id === t); return t === p.padre || t === p.abueloM || t === p.abueloP || (tt && tt.padre && tt.padre === p.padre) ? "✗" : "✓"; })]; });
+  return {tablas: [{titulo: "Toros que se pueden usar en cada vaca (✓ sí, ✗ pariente)", cols: ["Vaca", "Padre", ...toros.map(t => t)], rows, num: 0}],
+    nota: limitado("se revisan padre, abuelos y medio hermanos con los datos del respaldo. Columnas: los toros más usados en los últimos 2 años.")};
+}
+function rTasaPrenez(M){
+  const d = rpParam(M, "desde"), h = rpParam(M, "hasta"), rows = []; let el = 0, pr = 0;
+  for (let f = d; f < h; f = masDias(f, 21)){ const fin = masDias(f, 21); let e = 0, p = 0;
+    M.A.forEach(a => a.lacts.forEach(L => { const finL = L.conc ? L.conc.f : (L.sig || L.fin || h); const ini = masDias(L.parto, 50);
+      if (ini < fin && finL >= f && (!a.baja || a.baja.f > f)){ e++; if (L.conc && L.conc.f >= f && L.conc.f < fin) p++; } }));
+    rows.push([fV(f), e, p, pctTxt(p, e)]); el += e; pr += p; }
+  return {kpis: [["Tasa de preñez 21 días", pctTxt(pr, el), "Dos Pinos 11,9 % · meta 20 %"], ["Ciclos de 21 días", rows.length]],
+    chart: {type: "line", labels: rows.map(r => r[0].slice(0, 5)), series: [{name: "Tasa de preñez", data: rows.map(r => r[1] ? Math.round(100 * r[2] / r[1]) : null), color: "var(--accent)"}], unit: "%"},
+    tablas: [{titulo: "Tasa de preñez por ciclo de 21 días", cols: ["Inicio del ciclo", "Vacas aptas", "Preñadas", "Tasa"], rows: rows.reverse()}],
+    nota: "Vacas aptas: más de 50 días de paridas y todavía sin preñar en ese ciclo."};
+}
+// Salud de la ubre
+const casosM = M => M.A.flatMap(a => a.salud.filter(s => s[1] === "M").map(s => ({a, f: s[0], cu: s[2], prod: s[3], del: delEn(a, s[0])})));
+function rMastitis(M){
+  const C = casosM(M).filter(x => enRango(x.f, M)); const vacas = new Set(C.map(x => x.a.num));
+  const prom = M.A.filter(a => a.lacts.some(l => l.parto <= rpParam(M, "hasta") && (l.fin || M.U) > rpParam(M, "desde"))).length;
+  const q = [0, 0, 0, 0]; C.forEach(x => String(x.cu).split(",").forEach((v, i) => { if (v && i < 4) q[i]++; }));
+  return {kpis: [["Casos", C.length], ["Vacas con mastitis", vacas.size], ["Vacas en ordeño en el período", prom], ["Incidencia", pctTxt(vacas.size, prom)], ["Primeros 30 días de lactancia", pctTxt(C.filter(x => x.del != null && x.del <= 30).length, C.length)]],
+    tablas: [{titulo: "Casos por cuarto", cols: ["Cuarto", "Casos"], rows: q.map((n, i) => ["Cuarto " + (i + 1), n])},
+      {titulo: "Casos de mastitis clínica", cols: ["Fecha", "Vaca", "Días en leche", "Cuartos", "Producto"], rows: C.sort((x, y) => y.f.localeCompare(x.f)).map(x => [fV(x.f), x.a.num, x.del ?? "—", cuartos(x.cu), x.prod || "—"]), num: 1}]};
+}
+function rMastitisVarios(M){
+  const {ms, g} = porMes(M, casosM(M).map(x => [x.f, x]));
+  return {chart: {type: "bar", labels: ms.map(mesTxt), series: [{name: "Casos", data: ms.map(m => g[m].length), color: "var(--accent)"}], unit: ""},
+    tablas: [{titulo: "Mastitis clínica por mes", cols: ["Mes", "Casos", "Vacas"], rows: ms.map(m => [mesTxt(m), g[m].length, new Set(g[m].map(x => x.a.num)).size])}]};
+}
+function rMastitisListado(M){
+  const C = casosM(M).filter(x => enRango(x.f, M));
+  return {tablas: [{titulo: "Listado de casos", cols: ["Fecha", "Vaca", "Lactancia", "Días en leche", "Cuartos", "Producto"], rows: C.sort((x, y) => y.f.localeCompare(x.f)).map(x => { const L = x.a.lacts.filter(l => l.parto <= x.f).pop(); return [fV(x.f), x.a.num, L ? L.k : 0, x.del ?? "—", cuartos(x.cu), x.prod || "—"]; }), num: 1}]};
+}
+// Subclínica: VAMPP usa CMT; el respaldo no trae CMT, se usa células somáticas (más de 200 mil = subclínica)
+const notaCMT = limitado("el respaldo no trae pruebas CMT, así que aquí la mastitis subclínica se mide con células somáticas: más de 200 mil por ml.");
+function rCMTFecha(M){
+  const fs = fechasCCS(M), f = RP.p.fecha && fs.includes(RP.p.fecha) ? RP.p.fecha : fs[0];
+  const l = M.A.map(a => { const c = a.ccs.find(x => x[0] === f); return c ? [a.num, delEn(a, f) ?? "—", n0(c[1]), c[1] > 200 ? "Subclínica" : "Sana"] : null; }).filter(Boolean);
+  return {opciones: {fecha: fs.map(x => [x, fV(x)])}, sel: {fecha: f}, kpis: [["Vacas probadas", l.length], ["Con subclínica", pctTxt(l.filter(r => r[3] === "Subclínica").length, l.length)]],
+    tablas: [{titulo: "Prueba del " + fV(f), cols: ["Vaca", "Días en leche", "Células (mil)", "Resultado"], rows: l.sort((x, y) => (+y[2].replace(/\D/g, "")) - (+x[2].replace(/\D/g, ""))), num: 0}], nota: notaCMT};
+}
+function rCMTPeriodo(M){
+  const P = M.A.flatMap(a => a.ccs.filter(c => enRango(c[0], M)).map(c => ({a, f: c[0], v: c[1]})));
+  const fs = [...new Set(P.map(x => x.f))].sort();
+  return {kpis: [["Pruebas", fs.length], ["Muestras", P.length], ["Subclínicas", pctTxt(P.filter(x => x.v > 200).length, P.length)]],
+    tablas: [{titulo: "Subclínica por prueba", cols: ["Fecha", "Vacas", "Subclínicas", "%", "Promedio (mil)"], rows: fs.reverse().map(f => { const l = P.filter(x => x.f === f); return [fV(f), l.length, l.filter(x => x.v > 200).length, pctTxt(l.filter(x => x.v > 200).length, l.length), n0(promN(l.map(x => x.v)))]; })}], nota: notaCMT};
+}
+function rCMTListado(M){
+  const P = M.A.flatMap(a => a.ccs.filter(c => enRango(c[0], M) && c[1] > 200).map(c => [fV(c[0]), a.num, delEn(a, c[0]) ?? "—", n0(c[1])]));
+  return {tablas: [{titulo: "Casos de subclínica (más de 200 mil)", cols: ["Fecha", "Vaca", "Días en leche", "Células (mil)"], rows: P.sort((x, y) => isoDe(y[0]).localeCompare(isoDe(x[0]))), num: 1}], nota: notaCMT};
+}
+const ls = v => v > 0 ? Math.log2(v / 100) + 3 : null;
+function rCCSReporte(M){
+  const fs = fechasCCS(M), f = RP.p.fecha && fs.includes(RP.p.fecha) ? RP.p.fecha : fs[0];
+  const rows = M.A.map(a => { const i = a.ccs.findIndex(x => x[0] === f); if (i < 0) return null; const c = a.ccs[i], ant = a.ccs[i - 1];
+    return [a.num, delEn(a, f) ?? "—", n0(c[1]), n1(ls(c[1])), ant ? n0(ant[1]) : "—", ant ? (ant[1] > 200 ? (c[1] > 200 ? "Crónica" : "Curada") : (c[1] > 200 ? "Nueva infección" : "Sana")) : (c[1] > 200 ? "Infectada" : "Sana")]; }).filter(Boolean);
+  return {opciones: {fecha: fs.map(x => [x, fV(x)])}, sel: {fecha: f}, tablas: [{titulo: "Células somáticas del " + fV(f), cols: ["Vaca", "Días en leche", "Células (mil)", "Puntaje lineal", "Prueba anterior", "Situación"], rows, num: 0}]};
+}
+function dinamica(M){ const out = {}; M.A.forEach(a => a.ccs.forEach((c, i) => { const f = c[0]; const o = (out[f] = out[f] || {n: 0, alta: 0, nueva: 0, cron: 0, cura: 0, sana: 0, suma: 0}); o.n++; o.suma += c[1]; if (c[1] > 200) o.alta++;
+  const ant = a.ccs[i - 1]; if (ant){ if (ant[1] > 200 && c[1] > 200) o.cron++; else if (ant[1] > 200) o.cura++; else if (c[1] > 200) o.nueva++; else o.sana++; } })); return out; }
+function rCCSResumen(M){
+  const D0 = dinamica(M), fs = Object.keys(D0).filter(f => enRango(f, M)).sort().reverse();
+  return {tablas: [{titulo: "Indicadores por prueba", cols: ["Fecha", "Vacas", "Promedio (mil)", "Más de 200 mil", "Nuevas infecciones", "Crónicas", "Curadas"], rows: fs.map(f => { const o = D0[f]; return [fV(f), o.n, n0(o.suma / o.n), pctTxt(o.alta, o.n), o.nueva, o.cron, o.cura]; })}]};
+}
+function rCCSGrafico(M){
+  const D0 = dinamica(M), fs = Object.keys(D0).filter(f => enRango(f, M)).sort();
+  return {chart: {type: "line", labels: fs.map(f => fV(f).slice(0, 5)), full: fs.map(fV), series: [{name: "Promedio (mil)", data: fs.map(f => Math.round(D0[f].suma / D0[f].n)), color: "var(--accent)"}, {name: "% más de 200 mil", data: fs.map(f => Math.round(100 * D0[f].alta / D0[f].n)), color: "var(--straw)"}], unit: ""},
+    nota: fs.length ? "" : "No hay pruebas de células en este período."};
+}
+function rCCSDinamica(M){
+  const D0 = dinamica(M), fs = Object.keys(D0).filter(f => enRango(f, M)); const t = {nueva: 0, cron: 0, cura: 0, sana: 0}; fs.forEach(f => Object.keys(t).forEach(k => t[k] += D0[f][k]));
+  const tot = t.nueva + t.cron + t.cura + t.sana;
+  return {kpis: [["Comparaciones", tot], ["Nuevas infecciones", pctTxt(t.nueva, t.nueva + t.sana), "de las sanas"], ["Curadas", pctTxt(t.cura, t.cura + t.cron), "de las infectadas"], ["Crónicas", pctTxt(t.cron, tot)]],
+    tablas: [{titulo: "Cómo cambió cada vaca de una prueba a la siguiente", cols: ["Situación", "Casos", "%"], rows: [["Sana → sana", t.sana], ["Sana → infectada (nueva)", t.nueva], ["Infectada → sana (curada)", t.cura], ["Infectada → infectada (crónica)", t.cron]].map(([k, n]) => [k, n, pctTxt(n, tot)])}]};
+}
+function rCCSSeco(M){
+  const rows = []; M.A.forEach(a => a.lacts.forEach((L, i) => { const sig = a.lacts[i + 1]; if (!L.sec || !sig || !enRango(sig.parto, M)) return;
+    const antes = a.ccs.filter(c => c[0] <= L.sec && c[0] >= masDias(L.sec, -60)).pop(), desp = a.ccs.find(c => c[0] >= sig.parto && c[0] <= masDias(sig.parto, 60));
+    if (!antes || !desp) return; rows.push([a.num, fV(L.sec), n0(antes[1]), fV(sig.parto), n0(desp[1]), antes[1] > 200 ? (desp[1] > 200 ? "Siguió infectada" : "Curada en el seco") : (desp[1] > 200 ? "Se infectó en el seco" : "Sana")]); }));
+  return {kpis: [["Vacas con prueba antes y después", rows.length], ["Curadas en el seco", rows.filter(r => r[5] === "Curada en el seco").length], ["Se infectaron en el seco", rows.filter(r => r[5] === "Se infectó en el seco").length]],
+    tablas: [{titulo: "Período seco", cols: ["Vaca", "Secado", "Células antes", "Parto", "Células después", "Resultado"], rows, num: 0}],
+    nota: rows.length ? "" : "No hay vacas con prueba de células 60 días antes del secado y 60 días después del parto en este período."};
+}
+function rTratMastitis(M){
+  const C = casosM(M).filter(x => enRango(x.f, M)), g = {};
+  C.forEach(x => { const k = x.prod || "Sin producto anotado"; (g[k] = g[k] || {n: 0, rec: 0}); g[k].n++; if (x.a.salud.some(s => s[1] === "M" && s[0] > masDias(x.f, 7) && s[0] <= masDias(x.f, 60))) g[k].rec++; });
+  return {tablas: [{titulo: "Tratamientos de mastitis", cols: ["Producto", "Casos", "Volvió a enfermar (8 a 60 días)", "%"], rows: Object.entries(g).sort((x, y) => y[1].n - x[1].n).map(([k, v]) => [k, v.n, v.rec, pctTxt(v.rec, v.n)])}]};
+}
+// Condición corporal
+const etapa = d => d == null ? "Sin parto" : d < 0 ? "Seca" : d <= 30 ? "0 a 30 días" : d <= 100 ? "31 a 100 días" : d <= 200 ? "101 a 200 días" : "Más de 200 días";
+function rCCDatos(M){
+  const rows = M.A.flatMap(a => a.cc.filter(c => enRango(c[0], M)).map(c => [fV(c[0]), a.num, delEn(a, c[0]) ?? "—", String(c[1]).replace(".", ",")]));
+  return {tablas: [{titulo: "Condición corporal por fecha", cols: ["Fecha", "Vaca", "Días en leche", "CC"], rows: rows.sort((x, y) => isoDe(y[0]).localeCompare(isoDe(x[0]))), num: 1}]};
+}
+function rCCFecha(M){
+  const fs = fechasCC(M), f = RP.p.fecha && fs.includes(RP.p.fecha) ? RP.p.fecha : fs[0];
+  const l = M.A.map(a => { const c = a.cc.find(x => x[0] === f); return c ? {e: etapa(delEn(a, f)), v: c[1]} : null; }).filter(Boolean); const g = {};
+  l.forEach(x => (g[x.e] = g[x.e] || []).push(x.v));
+  return {opciones: {fecha: fs.map(x => [x, fV(x)])}, sel: {fecha: f}, kpis: [["Vacas calificadas", l.length], ["CC promedio", n1(promN(l.map(x => x.v)))], ["Flacas (menos de 2,75)", pctTxt(l.filter(x => x.v < 2.75).length, l.length)], ["Gordas (más de 3,75)", pctTxt(l.filter(x => x.v > 3.75).length, l.length)]],
+    tablas: [{titulo: "Condición por etapa de lactancia", cols: ["Etapa", "Vacas", "Promedio", "Mínima", "Máxima"], rows: Object.entries(g).map(([k, v]) => [k, v.length, n1(promN(v)), n1(Math.min(...v)), n1(Math.max(...v))])}]};
+}
+function rCCPeriodo(M){
+  const l = M.A.flatMap(a => a.cc.filter(c => enRango(c[0], M)).map(c => ({e: etapa(delEn(a, c[0])), v: c[1]}))); const g = {}; l.forEach(x => (g[x.e] = g[x.e] || []).push(x.v));
+  return {kpis: [["Calificaciones", l.length], ["CC promedio", n1(promN(l.map(x => x.v)))]], tablas: [{titulo: "Condición por etapa en el período", cols: ["Etapa", "Calificaciones", "Promedio"], rows: Object.entries(g).map(([k, v]) => [k, v.length, n1(promN(v))])}]};
+}
+function rCCGrafico(M){
+  const bins = [0, 30, 60, 100, 150, 200, 250, 305, 400]; const l = M.A.flatMap(a => a.cc.filter(c => enRango(c[0], M)).map(c => ({d: delEn(a, c[0]), v: c[1]}))).filter(x => x.d != null);
+  const lab = bins.slice(0, -1).map((b, i) => b + "-" + bins[i + 1]);
+  return {chart: {type: "line", labels: lab, series: [{name: "CC promedio", data: bins.slice(0, -1).map((b, i) => { const v = promN(l.filter(x => x.d >= b && x.d < bins[i + 1]).map(x => x.v)); return v == null ? null : Math.round(v * 100) / 100; }), color: "var(--accent)"}], unit: ""},
+    nota: "Condición corporal promedio según los días en leche."};
+}
+function rSaludOtros(M, titulo){
+  const C = M.A.flatMap(a => a.salud.filter(s => s[1] !== "M" && enRango(s[0], M)).map(s => [fV(s[0]), a.num, SALUD(s[1]), s[3] || "—"]));
+  return {tablas: [{titulo, cols: ["Fecha", "Vaca", "Código", "Diagnóstico o producto"], rows: C, num: 1}], nota: limitado("el respaldo trae muy pocos problemas de salud anotados aparte de la mastitis.")};
+}
+function rMortalidad(M){
+  const B = M.A.filter(a => a.baja && enRango(a.baja.f, M)); const cat = a => { if (a.lacts.some(l => l.parto <= a.baja.f)) return "Vaca"; const e = a.nac ? mesesEntre(a.nac, a.baja.f) : null; return e != null && e < 12 ? "Ternera" : "Novilla"; };
+  const g = {}; B.forEach(a => { const k = (a.baja.motivo || a.baja.tipo).trim(); g[k] = (g[k] || 0) + 1; });
+  return {kpis: [["Bajas", B.length], ["Muertes o descartes", B.filter(a => a.baja.tipo !== "Salida").length], ["Salidas", B.filter(a => a.baja.tipo === "Salida").length], ["Vacas", B.filter(a => cat(a) === "Vaca").length], ["Novillas", B.filter(a => cat(a) === "Novilla").length], ["Terneras", B.filter(a => cat(a) === "Ternera").length]],
+    tablas: [{titulo: "Bajas por motivo", cols: ["Motivo", "Animales"], rows: Object.entries(g).sort((x, y) => y[1] - x[1])},
+      {titulo: "Animales dados de baja", cols: ["Fecha", "Vaca", "Categoría", "Tipo", "Motivo"], rows: B.sort((x, y) => y.baja.f.localeCompare(x.baja.f)).map(a => [fV(a.baja.f), a.num, cat(a), a.baja.tipo, a.baja.motivo || "—"]), num: 1}]};
+}
+function rVacunas(M){
+  const V = M.A.flatMap(a => a.vac.filter(v => enRango(v[0], M)).map(v => [v[0], a.num, v[1]])); const g = {}; V.forEach(v => g[v[2]] = (g[v[2]] || 0) + 1);
+  return {kpis: Object.entries(g).map(([k, n]) => [k, n + " aplicaciones"]), tablas: [{titulo: "Vacunas aplicadas", cols: ["Fecha", "Animal", "Vacuna"], rows: V.sort((x, y) => y[0].localeCompare(x[0])).map(v => [fV(v[0]), v[1], v[2]]), num: 1}],
+    nota: "El respaldo trae vacunas; desparasitaciones y otros tratamientos no vienen."};
+}
+function rRetiro(M){
+  const d30 = masDias(M.U, -30);
+  const rows = [...M.A.flatMap(a => a.salud.filter(s => s[0] > d30 && s[3]).map(s => [s[0], a.num, "Tratamiento", s[3]])), ...M.A.flatMap(a => a.sec.filter(s => s[1] > d30).map(s => [s[1], a.num, "Secado", s[2]]))];
+  const prods = (M.H.secado || []).map(p => [p.prod, p.pa.join(", ")]);
+  return {tablas: [{titulo: "Tratamientos de los últimos 30 días", cols: ["Fecha", "Vaca", "Tipo", "Producto"], rows: rows.sort((x, y) => y[0].localeCompare(x[0])).map(r => [fV(r[0]), r[1], r[2], r[3]]), num: 1}, {titulo: "Productos de secado definidos", cols: ["Producto", "Principios activos"], rows: prods}],
+    nota: limitado("el respaldo no trae los días de retiro de cada producto, así que no se puede calcular hasta cuándo va la leche al descarte.")};
+}
+// Crecimiento
+const PESOS = M => M.A.flatMap(a => a.pesos.map((p, i) => ({a, f: p[0], kg: p[1], edad: a.nac ? dISO(a.nac, p[0]) : null, ant: a.pesos[i - 1] || null})));
+const notaPesos = n => n < 30 ? limitado(`el respaldo solo trae ${n} pesajes de animales jóvenes, muy pocos para analizar el crecimiento.`) : "";
+function rCrecFecha(M){
+  const P = PESOS(M), fs = [...new Set(P.map(x => x.f))].sort().reverse(), f = RP.p.fecha && fs.includes(RP.p.fecha) ? RP.p.fecha : fs[0];
+  const l = P.filter(x => x.f === f);
+  return {opciones: {fecha: fs.map(x => [x, fV(x)])}, sel: {fecha: f}, tablas: [{titulo: "Pesaje del " + (f ? fV(f) : "—"), cols: ["Animal", "Edad (días)", "Peso (kg)", "Meta (kg)", "Avance"], rows: l.map(x => { const meta = x.edad != null ? Math.round(40 + x.edad * 0.72) : null; return [x.a.num, x.edad ?? "—", n0(x.kg), meta ?? "—", meta ? pctTxt(x.kg, meta) : "—"]; }), num: 0}], nota: notaPesos(P.length)};
+}
+function rCrecPeriodo(M){
+  const P = PESOS(M).filter(x => enRango(x.f, M));
+  return {tablas: [{titulo: "Pesajes del período", cols: ["Fecha", "Animal", "Edad (días)", "Peso (kg)", "Ganancia diaria (kg)"], rows: P.sort((x, y) => y.f.localeCompare(x.f)).map(x => [fV(x.f), x.a.num, x.edad ?? "—", n0(x.kg), x.ant ? n1((x.kg - x.ant[1]) / Math.max(1, dISO(x.ant[0], x.f))) : "—"]), num: 1}], nota: notaPesos(PESOS(M).length)};
+}
+function rCrecDiario(M){
+  const P = PESOS(M).filter(x => x.ant), g = P.map(x => (x.kg - x.ant[1]) / Math.max(1, dISO(x.ant[0], x.f)));
+  return {kpis: [["Ganancia diaria promedio", n1(promN(g)) + " kg"], ["Meta", "0,72 kg"]], tablas: [{titulo: "Ganancia diaria entre pesajes", cols: ["Animal", "Desde", "Hasta", "Días", "Ganancia diaria (kg)"], rows: P.map((x, i) => [x.a.num, fV(x.ant[0]), fV(x.f), dISO(x.ant[0], x.f), n1(g[i])]), num: 0}], nota: notaPesos(PESOS(M).length)};
+}
+function rCurvaCrec(M){
+  const P = PESOS(M).filter(x => x.edad != null), bins = [0, 60, 120, 180, 270, 365, 540, 730];
+  const lab = bins.slice(0, -1).map((b, i) => Math.round(b / 30.4) + "-" + Math.round(bins[i + 1] / 30.4) + " m");
+  return {chart: {type: "line", labels: lab, series: [{name: "Peso promedio", data: bins.slice(0, -1).map((b, i) => { const v = promN(P.filter(x => x.edad >= b && x.edad < bins[i + 1]).map(x => x.kg)); return v == null ? null : Math.round(v); }), color: "var(--accent)"},
+    {name: "Meta", data: bins.slice(0, -1).map((b, i) => Math.round(40 + (b + bins[i + 1]) / 2 * 0.72)), color: "var(--straw)"}], unit: "kg"}, nota: notaPesos(PESOS(M).length)};
+}
+function rGananciaPeso(M){
+  const P = PESOS(M).filter(x => x.ant && x.edad != null); const bins = [0, 90, 180, 365, 730]; const lab = ["0-3 meses", "3-6 meses", "6-12 meses", "12-24 meses"];
+  return {tablas: [{titulo: "Ganancia diaria por edad", cols: ["Edad", "Pesajes", "Ganancia diaria (kg)"], rows: lab.map((l, i) => { const s = P.filter(x => x.edad >= bins[i] && x.edad < bins[i + 1]); return [l, s.length, n1(promN(s.map(x => (x.kg - x.ant[1]) / Math.max(1, dISO(x.ant[0], x.f)))))]; })}], nota: notaPesos(PESOS(M).length)};
+}
+function rEnfJovenes(M){
+  const C = M.A.flatMap(a => a.salud.filter(s => enRango(s[0], M) && a.nac && mesesEntre(a.nac, s[0]) < 24 && !a.lacts.some(l => l.parto <= s[0])).map(s => [fV(s[0]), a.num, n1(mesesEntre(a.nac, s[0])), SALUD(s[1]), s[3] || "—"]));
+  return {tablas: [{titulo: "Enfermedades de terneras y novillas", cols: ["Fecha", "Animal", "Edad (meses)", "Problema", "Diagnóstico o producto"], rows: C, num: 1}], nota: C.length ? "" : limitado("el respaldo no trae enfermedades anotadas en animales jóvenes en este período.")};
+}
+// Producción de leche
+const PES = M => M.A.flatMap(a => a.lacts.flatMap(L => L.ctrl.map(c => ({a, L, ...c}))));
+function rPesaFecha(M){
+  const fs = fechasControl(M), f = RP.p.fecha && fs.includes(RP.p.fecha) ? RP.p.fecha : fs[0];
+  const l = PES(M).filter(x => x.f === f).sort((x, y) => (+x.a.num) - (+y.a.num));
+  return {opciones: {fecha: fs.map(x => [x, fV(x)])}, sel: {fecha: f}, kpis: [["Vacas pesadas", l.length], ["Promedio", n1(promN(l.map(x => x.kg))) + " kg"], ["Total", n0(l.reduce((s, x) => s + x.kg, 0)) + " kg"], ["PDC promedio", n1(promN(l.map(x => x.pdc))) + " kg"], ["Días en leche promedio", n0(promN(l.map(x => x.d)))]],
+    tablas: [{titulo: "Pesa del " + (f ? fV(f) : "—"), cols: ["Vaca", "Raza", "Lac", "DLac", "Kilos", "PDC", "Vrel", "Grasa", "Sólidos", "Proteína"], rows: l.map(x => [x.a.num, x.a.raza || "—", x.L.k, x.d, n1(x.kg), x.pdc != null ? n1(x.pdc) : "—", x.vrel ?? "—", "—", "—", "—"]), num: 0}],
+    nota: limitado("grasa, sólidos y proteína no vienen en el respaldo. PDC es la producción diaria corregida y Vrel el valor relativo que calcula VAMPP.")};
+}
+function rAnalisisFecha(M){
+  const fs = fechasControl(M), f = RP.p.fecha && fs.includes(RP.p.fecha) ? RP.p.fecha : fs[0], l = PES(M).filter(x => x.f === f);
+  const grupo = (t, k) => { const g = {}; l.forEach(x => { const key = k(x); (g[key] = g[key] || []).push(x); }); return {titulo: t, cols: [t.split(" por ")[1] ? t.split(" por ")[1][0].toUpperCase() + t.split(" por ")[1].slice(1) : "Grupo", "Vacas", "Kilos promedio", "PDC promedio", "Días en leche"], rows: Object.entries(g).sort().map(([k, v]) => [k, v.length, n1(promN(v.map(x => x.kg))), n1(promN(v.map(x => x.pdc))), n0(promN(v.map(x => x.d)))])}; };
+  return {opciones: {fecha: fs.map(x => [x, fV(x)])}, sel: {fecha: f}, tablas: [grupo("Producción por lactancia", x => x.L.k >= 3 ? "3 o más" : String(x.L.k)), grupo("Producción por etapa", x => etapa(x.d))]};
+}
+function rIndividual(M){
+  const nums = M.A.filter(a => a.leche.length).map(a => a.num).sort((x, y) => (+x) - (+y)), v = RP.p.vaca && nums.includes(RP.p.vaca) ? RP.p.vaca : nums[0], a = M.A.find(x => x.num === v);
+  const l = a ? a.lacts.flatMap(L => L.ctrl.map(c => [L.k, fV(c.f), c.d, n1(c.kg), c.pdc != null ? n1(c.pdc) : "—", c.vrel ?? "—"])) : [];
+  const L = a && a.lacts.filter(x => x.ctrl.length).pop();
+  return {opciones: {vaca: nums.map(n => [n, n])}, sel: {vaca: v}, chart: L && L.ctrl.length > 1 ? {type: "line", labels: L.ctrl.map(c => String(c.d)), full: L.ctrl.map(c => fV(c.f) + " · " + c.d + " días"), series: [{name: "Kilos", data: L.ctrl.map(c => c.kg), color: "var(--accent)"}], unit: "kg"} : null,
+    tablas: [{titulo: "Pesas de la vaca " + (v || "—"), cols: ["Lactancia", "Fecha", "Días en leche", "Kilos", "PDC", "Vrel"], rows: l.reverse()}]};
+}
+function rIrregular(M){
+  const rows = []; M.A.forEach(a => a.lacts.forEach(L => L.ctrl.forEach((c, i) => { const p = L.ctrl[i - 1]; if (!p || !enRango(c.f, M)) return; const cambio = (c.kg - p.kg) / p.kg;
+    if (cambio <= -0.25 || cambio >= 0.4) rows.push([fV(c.f), a.num, c.d, n1(p.kg), n1(c.kg), Math.round(cambio * 100) + " %"]); })));
+  return {kpis: [["Pesas irregulares", rows.length]], tablas: [{titulo: "Bajadas de 25 % o más y subidas de 40 % o más entre controles", cols: ["Fecha", "Vaca", "Días en leche", "Kilos antes", "Kilos ahora", "Cambio"], rows: rows.sort((x, y) => isoDe(y[0]).localeCompare(isoDe(x[0]))), num: 1}]};
+}
+function rCurva2(M){
+  const ms = []; for (let i = 23; i >= 0; i--) ms.push(masMeses(M.U, -i).slice(0, 7)); const P = PES(M);
+  const g = Object.fromEntries(ms.map(m => [m, P.filter(x => x.f.slice(0, 7) === m)]));
+  return {chart: {type: "line", labels: ms.map(mesTxt), series: [{name: "Kilos promedio", data: ms.map(m => { const v = promN(g[m].map(x => x.kg)); return v == null ? null : Math.round(v * 10) / 10; }), color: "var(--accent)"}, {name: "PDC", data: ms.map(m => { const v = promN(g[m].map(x => x.pdc)); return v == null ? null : Math.round(v * 10) / 10; }), color: "var(--straw)"}], unit: "kg"},
+    tablas: [{titulo: "Producción por mes, últimos 2 años del respaldo", cols: ["Mes", "Vacas pesadas", "Kilos promedio", "PDC promedio", "Días en leche"], rows: ms.slice().reverse().map(m => [mesTxt(m), new Set(g[m].map(x => x.a.num)).size, n1(promN(g[m].map(x => x.kg))), n1(promN(g[m].map(x => x.pdc))), n0(promN(g[m].map(x => x.d)))])}]};
+}
+function rCalidadPesas(M){
+  const rows = [];
+  M.A.forEach(a => { a.leche.forEach(c => { if (!a.lacts.some(L => c[0] >= L.parto && c[0] <= (L.fin || M.U))) rows.push([fV(c[0]), a.num, n1(c[1]), "Pesa fuera de lactancia (antes del parto o después del secado)"]);
+      if (c[1] > 50) rows.push([fV(c[0]), a.num, n1(c[1]), "Más de 50 kg"]); if (c[1] <= 1) rows.push([fV(c[0]), a.num, n1(c[1]), "1 kg o menos"]); });
+    const vistos = {}; a.leche.forEach(c => { if (vistos[c[0]]) rows.push([fV(c[0]), a.num, n1(c[1]), "Pesa repetida el mismo día"]); vistos[c[0]] = 1; }); });
+  return {kpis: [["Pesas revisadas", M.A.reduce((s, a) => s + a.leche.length, 0)], ["Con problema", rows.length]], tablas: [{titulo: "Pesas para revisar", cols: ["Fecha", "Vaca", "Kilos", "Problema"], rows: rows.sort((x, y) => isoDe(y[0]).localeCompare(isoDe(x[0]))), num: 1}]};
+}
+const filaLact = (a, L) => [a.num, L.k, fV(L.parto), L.dur, L.ctrl.length, n0(rpProd(L, 100)), n0(rpProd(L, 305)), n0(rpProd(L, 9999)), L.ctrl.length ? n1(Math.max(...L.ctrl.map(c => c.kg))) : "—", L.terminada ? "Terminada" : "En curso"];
+const colsLact = ["Vaca", "Lact.", "Parto", "Días", "Pesas", "Kg a 100 días", "Kg a 305 días", "Kg total", "Pico (kg)", "Situación"];
+const notaLact = "Los kilos de la lactancia se estiman uniendo los controles mensuales con líneas rectas, como hace el control lechero.";
+function rLactancias(M){ const rows = M.act.flatMap(a => a.lacts.filter(L => L.ctrl.length && (L === a.ult || enRango(L.fin, M))).map(L => filaLact(a, L))); return {tablas: [{titulo: "Lactancias de las vacas en la finca", cols: colsLact, rows, num: 0}], nota: notaLact}; }
+function rLactTerminadas(M){
+  const rows = M.A.flatMap(a => a.lacts.filter(L => L.terminada && L.ctrl.length && enRango(L.fin, M)).map(L => [...filaLact(a, L).slice(0, 9), L.sec ? fV(L.sec) : "Sin secado", L.iep ?? "—"]));
+  return {tablas: [{titulo: "Lactancias terminadas en el período", cols: [...colsLact.slice(0, 9), "Secado", "IEP (días)"], rows, num: 0}], nota: notaLact};
+}
+function rResumenLact(M){
+  const g = {}; M.A.forEach(a => a.lacts.filter(L => L.terminada && L.ctrl.length && enRango(L.fin, M)).forEach(L => { const k = L.k >= 3 ? "3 o más" : String(L.k); (g[k] = g[k] || []).push(L); }));
+  return {tablas: [{titulo: "Resumen de lactancias terminadas", cols: ["Lactancia", "Lactancias", "Días promedio", "Kg a 305 días", "Kg total", "Pico (kg)", "IEP (días)"], rows: Object.entries(g).sort().map(([k, l]) => [k, l.length, n0(promN(l.map(L => L.dur))), n0(promN(l.map(L => rpProd(L, 305)))), n0(promN(l.map(L => rpProd(L, 9999)))), n1(promN(l.map(L => Math.max(...L.ctrl.map(c => c.kg))))), n0(promN(l.map(L => L.iep)))])}], nota: notaLact};
+}
+function rTodasLact(M){ const rows = M.A.flatMap(a => a.lacts.filter(L => enRango(L.parto, M) || enRango(L.fin, M)).map(L => filaLact(a, L))); return {tablas: [{titulo: "Lactancias de todas las vacas", cols: colsLact, rows: rows.sort((x, y) => (+x[0]) - (+y[0]) || x[1] - y[1]), num: 0}], nota: notaLact}; }
+function rCurvaLact(M){
+  const bins = []; for (let d = 0; d < 330; d += 30) bins.push(d); const P = PES(M).filter(x => enRango(x.f, M));
+  const serie = f => bins.map(b => { const v = promN(P.filter(x => f(x) && x.d >= b && x.d < b + 30).map(x => x.kg)); return v == null ? null : Math.round(v * 10) / 10; });
+  return {chart: {type: "line", labels: bins.map(b => String(b)), full: bins.map(b => `${b} a ${b + 29} días`), series: [{name: "Primera lactancia", data: serie(x => x.L.k === 1), color: "var(--straw)"}, {name: "Segunda o más", data: serie(x => x.L.k >= 2), color: "var(--accent)"}], unit: "kg"},
+    nota: "Kilos promedio según los días en leche, con las pesas del período."};
+}
+function rProductividad(M){
+  const {ms, g} = porMes(M, PES(M).map(x => [x.f, x]));
+  const vacasMes = m => { const f = m + "-15"; return M.A.filter(a => M.vivoEn(a, f) && a.lacts.some(l => l.parto <= f)).length; };
+  return {tablas: [{titulo: "Productividad por mes (según el control lechero)", cols: ["Mes", "Vacas totales", "Vacas pesadas", "% en ordeño", "Kg por vaca en ordeño", "Kg por vaca total"], rows: ms.slice().reverse().map(m => { const l = g[m], vt = vacasMes(m), vo = new Set(l.map(x => x.a.num)).size, kg = promN(l.map(x => x.kg));
+    return [mesTxt(m), vt, vo, pctTxt(vo, vt), n1(kg), kg != null && vt ? n1(kg * vo / vt) : "—"]; })}], nota: limitado("el respaldo no trae las entregas de leche a la planta, así que la productividad se calcula con el control lechero.")};
+}
+function rIndicesAnuales(M){
+  const anos = [...new Set(M.A.flatMap(a => a.lacts.map(l => l.parto.slice(0, 4))))].sort().slice(-6);
+  const rows = anos.map(y => { const en = f => f && f.slice(0, 4) === y; const L = M.A.flatMap(a => a.lacts.map((l, i) => ({a, l, ant: a.lacts[i - 1]})));
+    const p = L.filter(x => en(x.l.parto)), an = p.filter(x => x.ant), pes = PES(M).filter(x => en(x.f));
+    return [y, p.length, n0(promN(an.map(x => x.ant.iep))), n0(promN(an.map(x => x.ant.da))), n1(promN(pes.map(x => x.kg))), M.A.filter(a => a.baja && en(a.baja.f)).length]; });
+  return {tablas: [{titulo: "Índices por año", cols: ["Año", "Partos", "IEP (días)", "Días abiertos", "Kg promedio por pesa", "Bajas"], rows: rows.reverse()}]};
+}
+function rParametrosNac(M){
+  const r = rIndicadores(M), get = k => (r.kpis.find(x => x[0] === k) || [])[1];
+  const tp = rTasaPrenez(M).kpis[0][1];
+  const f = [["Servicios por preñez", get("Servicios por preñez"), "2,2", "2"], ["Días abiertos", get("Días abiertos"), "136", "115"], ["Intervalo entre partos (días)", get("Intervalo entre partos"), "419", "390"],
+    ["Tasa de preñez 21 días", tp, "11,9 %", "20 %"], ["Edad al primer parto (meses)", get("Edad al primer parto"), "31,9", "24 a 26"]];
+  return {tablas: [{titulo: "Su finca contra el promedio Dos Pinos", cols: ["Indicador", "Su finca", "Dos Pinos", "Meta"], rows: f}],
+    nota: limitado("VAMPP compara contra los parámetros nacionales que baja de internet; esta versión compara contra el promedio Dos Pinos de agosto 2026 que ya trae Rumia.")};
+}
+// Reportes personalizados: el usuario elige columnas del resumen individual y filtros
+const RP_COLS = [["num","Vaca"],["ident","Identificación"],["nac","Nacimiento"],["raza","Raza"],["lact","Lactancia"],["cat","Situación"],["est","Estado reproductivo"],["del","Días en leche"],["dp","Días preñez"],
+  ["serv","Servicios"],["toro","Último toro"],["kg","Kg último control"],["pdc","PDC"],["ccs","Células (mil)"],["cc","CC"],["lote","Lote"],["padre","Padre"],["madre","Madre"]];
+function valorCol(M, a, k){ const e = rpEstado(a, M.U), c = a.leche[a.leche.length - 1];
+  return {num: a.num, ident: a.ident || "", nac: fV(a.nac), raza: a.raza || "", lact: a.lact, cat: e.cat, est: e.est, del: e.del ?? "", dp: e.dp ?? "", serv: e.L ? e.L.serv.length : a.servNov.length,
+    toro: e.u ? nombreToro(M.H, e.u.toro) : "", kg: c ? n1(c[1]) : "", pdc: c && c[3] != null ? n1(c[3]) : "", ccs: a.ccs.length ? n0(a.ccs[a.ccs.length - 1][1]) : "", cc: a.cc.length ? String(a.cc[a.cc.length - 1][1]).replace(".", ",") : "",
+    lote: a.lotes.length ? a.lotes[a.lotes.length - 1][2] : "", padre: nombreToro(M.H, a.padre), madre: a.madre || ""}[k]; }
+function rPersObtener(M){
+  const defs = store.get("rpPers", []); const sel = defs.find(d => d.n === RP.p.pers) || defs[0];
+  if (!sel) return {nota: "Todavía no ha creado reportes personalizados. Vaya a 8.2 Crear o modificar reportes.", opciones: {}};
+  const anim = M.act.filter(a => { const e = rpEstado(a, M.U); return (!sel.cat || e.cat === sel.cat) && (!sel.est || e.est === sel.est); });
+  return {opciones: {pers: defs.map(d => [d.n, d.n])}, sel: {pers: sel.n}, tablas: [{titulo: sel.n, cols: sel.cols.map(k => (RP_COLS.find(c => c[0] === k) || [k, k])[1]), rows: anim.map(a => sel.cols.map(k => valorCol(M, a, k))), num: sel.cols.indexOf("num")}]};
+}
+function rPersCrear(M){
+  const defs = store.get("rpPers", []), ed = defs.find(d => d.n === RP.p.pers) || {n: "", cols: ["num", "lact", "cat", "est", "del", "kg"], cat: "", est: ""};
+  return {html: `<div class="panel"><p style="margin:0 0 8px">Elija las columnas y los filtros. El reporte queda guardado en este equipo y aparece en 8.1 Obtener reportes.</p>
+    ${defs.length ? `<label class="form" style="display:block;margin-bottom:8px"><span class="label">Modificar uno guardado</span><select class="field" id="rp-pers" style="margin-top:4px"><option value="">Nuevo reporte</option>${defs.map(d => `<option value="${esc(d.n)}" ${d.n === ed.n ? "selected" : ""}>${esc(d.n)}</option>`).join("")}</select></label>` : ""}
+    <label class="form" style="display:block"><span class="label">Nombre</span><input class="field" id="rpp-nombre" value="${esc(ed.n)}" placeholder="Por ejemplo: Vacas para revisar" style="margin-top:4px"></label>
+    <div class="label" style="margin-top:10px">Columnas</div><div class="chips">${RP_COLS.map(([k, l]) => `<label class="chip" style="cursor:pointer"><input type="checkbox" class="rpp-col" value="${k}" ${ed.cols.includes(k) ? "checked" : ""}> ${esc(l)}</label>`).join("")}</div>
+    <div class="form" style="margin-top:10px"><label>Situación<select class="field" id="rpp-cat"><option value="">Todas</option>${["En ordeño","Seca","Novilla","Ternera"].map(c => `<option value="${c}" ${ed.cat === c ? "selected" : ""}>${c}</option>`).join("")}</select></label>
+      <label>Estado<select class="field" id="rpp-est"><option value="">Todos</option>${["Preñada","Inseminada","Vacía","Sin servicio","Abortó"].map(c => `<option value="${c}" ${ed.est === c ? "selected" : ""}>${c}</option>`).join("")}</select></label></div>
+    <div class="actionsrow"><button class="btn" data-rp-guardar="1">Guardar reporte</button>${ed.n ? `<button class="btn ghost" data-rp-borrar="${esc(ed.n)}">Borrar este reporte</button>` : ""}</div></div>`};
+}
+function rPersExportar(){
+  const defs = store.get("rpPers", []);
+  return {html: `<div class="panel"><p style="margin:0 0 10px">${defs.length ? `Tiene ${defs.length} reporte${defs.length > 1 ? "s" : ""} personalizado${defs.length > 1 ? "s" : ""}. Descárguelos para pasarlos a otro equipo.` : "Todavía no ha creado reportes personalizados."}</p>
+    ${defs.length ? `<div class="actionsrow" style="margin-top:0"><button class="btn" data-rp-exportar="1">Descargar mis reportes</button></div>` : ""}</div>`};
+}
+function rPersImportar(){
+  return {html: `<div class="panel"><p style="margin:0 0 10px">Elija el archivo de reportes que descargó desde otro equipo con 8.3 Exportar reportes.</p>
+    <div class="actionsrow" style="margin-top:0"><label class="btn" for="rp-importar" style="cursor:pointer">Elegir archivo</label><input class="sr" type="file" id="rp-importar" accept=".json,application/json"></div></div>`};
+}
+// El menú: grupo, subgrupo, título, función, parámetros (p = un período, v = varios períodos, f = una fecha, a = una vaca, c = código)
+const RP_MENU = [
+  ["1. Resumen del hato", [
+    ["1. Reproducción", [["1. Estado actual de vacas/reemplazos", rEstadoActual, ""], ["2. Parámetros de vacas/reemplazos", rIndicadores, "p"]]],
+    ["2. Producción, crecimiento y salud", rProdCrecSalud, ""], ["3. Resumen individual de vacas", rResumenIndividual, ""], ["4. Estado general del hato", rEstadoGeneral, ""], ["5. Vista general del hato", rVistaGeneral, ""]]],
+  ["2. Reproducción", [
+    ["1. Servicios", [["1. Animales paridos: un período (+ análisis)", rParidos, "p"], ["2. Animales paridos: varios períodos", rParidosVarios, "v"], ["3. Animales servidos/concebidos: un período (+ análisis)", rServidos, "p"],
+      ["4. Animales servidos/concebidos: varios períodos", rServidosVarios, "v"], ["5. Tasas de concepción (toros e inseminadores)", rTasasConcepcion, "p"], ["6. Lista de inseminaciones por toro", rInsemPorToro, "p"],
+      ["7. Cuadro de fertilidad", [["1. Vacas", M => rCuadroFertilidad(M, false), ""], ["2. Reemplazos", M => rCuadroFertilidad(M, true), ""]]]]],
+    ["2. Partos y abortos", [["1. Un período (+ análisis)", rPartosAbortos, "p"], ["2. Varios períodos", rPartosAbortosVarios, "v"], ["3. Patrón de partos (años anteriores)", rPatronAnterior, ""], ["4. Patrón de partos (próximos 6 meses)", rPatronProximo, ""], ["5. Longitud de la preñez", rLongitudPrenez, "p"]]],
+    ["3. Búsqueda por código reproductivo", M => rBuscarCodigo(M, "gyn"), "pc"], ["4. Hijos nacidos por toro", rHijosPorToro, "p"], ["5. Reporte de endogamia", rEndogamia, ""], ["6. Selección de toros (endogamia)", rSeleccionToros, ""], ["7. Tasa de preñez", rTasaPrenez, "p"]]],
+  ["3. Salud", [
+    ["1. Salud de la ubre", [["1. Mastitis clínica: un período (+ análisis)", rMastitis, "p"], ["2. Mastitis clínica: varios períodos", rMastitisVarios, "v"], ["3. Mastitis clínica: listado de casos", rMastitisListado, "p"],
+      ["4. Mastitis subclínica (CMT): una fecha", rCMTFecha, "f"], ["5. Mastitis subclínica (CMT): un período", rCMTPeriodo, "p"], ["6. Mastitis subclínica (CMT): listado de casos", rCMTListado, "p"],
+      ["7. Análisis de células somáticas/CMT", [["1. Reporte de células somáticas/CMT", rCCSReporte, "f"], ["2. Resumen de indicadores", rCCSResumen, "p"], ["3. Gráfico de indicadores", rCCSGrafico, "p"], ["4. Análisis de la dinámica de infección", rCCSDinamica, "p"], ["5. Análisis de periodo seco", rCCSSeco, "p"]]],
+      ["8. Análisis de tratamientos de mastitis", rTratMastitis, "p"]]],
+    ["2. Cojeras", [["1. Un período (+ análisis)", () => demo("registros de cojeras"), "p"], ["2. Varios períodos", () => demo("registros de cojeras"), "v"], ["3. Casos", () => demo("registros de cojeras"), "p"]]],
+    ["3. Condición corporal", [["1. Datos por fecha de registro", rCCDatos, "p"], ["2. Análisis: una fecha", rCCFecha, "f"], ["3. Análisis: un período", rCCPeriodo, "p"], ["4. Gráfico colectivo", rCCGrafico, "p"]]],
+    ["4. Problemas metabólicos y gastroentéricos", M => rSaludOtros(M, "Problemas metabólicos y gastroentéricos"), "p"], ["5. Salud diversos", M => rSaludOtros(M, "Otros problemas de salud"), "p"], ["6. Mortalidad y descarte", rMortalidad, "p"],
+    ["7. Vacunación/desparasitación/otras", rVacunas, "p"], ["8. Búsqueda por código de enfermedad", M => rBuscarCodigo(M, "salud"), "pc"], ["9. Revisión de periodos de retiro", rRetiro, ""]]],
+  ["4. Crecimiento y salud de animales jóvenes", [["1. Crecimiento: una fecha", rCrecFecha, "f"], ["2. Crecimiento: un período", rCrecPeriodo, "p"], ["3. Crecimiento diario", rCrecDiario, ""], ["4. Curva colectiva de crecimiento", rCurvaCrec, ""],
+    ["5. Curva de ganancia de peso", rGananciaPeso, ""], ["6. Enfermedades por periodo", rEnfJovenes, "p"], ["7. Análisis de destete", () => demo("los datos de destete"), ""]]],
+  ["5. Producción de leche", [
+    ["1. Reportes de pesas (Kg y PDC)", [["1. Datos por fecha de pesa", rPesaFecha, "f"], ["2. Análisis por fecha", rAnalisisFecha, "f"], ["3. Reporte individual secuencial", rIndividual, "a"], ["4. Vacas con producción de leche irregular", rIrregular, "p"],
+      ["5. Vacas con bajo contenido de grasa, sólidos o proteína", () => demo("análisis de grasa, sólidos ni proteína por vaca"), "f"], ["6. Curva período de dos años", rCurva2, ""], ["7. Revisión de calidad de pesas de leche", rCalidadPesas, ""]]],
+    ["2. Reportes de lactancias", [["1. Listado de lactancias (100, 305 y terminadas)", rLactancias, "p"], ["2. Listado de lactancias terminadas (con IEP y secado)", rLactTerminadas, "p"], ["3. Resumen de lactancias terminadas", rResumenLact, "p"], ["4. Lactancias de todas las vacas y partos", rTodasLact, "p"], ["5. Curva colectiva de lactancia", rCurvaLact, "p"]]],
+    ["3. Productividad de la finca (entrega de leche)", [["1. Calidad y cantidad de leche vendida", () => demo("las entregas de leche a la planta ni sus análisis de calidad"), "p"], ["2. Reporte de productividad", rProductividad, "v"], ["3. Índices de productividad anual", rIndicesAnuales, ""]]]]],
+  ["6. Producción de carne", ["1. Rendimiento en finca", "2. Rendimiento en matadero - individual", "3. Rendimiento en matadero - promedio", "4. Rendimiento en subasta - individual", "5. Rendimiento en subasta - promedio",
+    "6. Rendimiento animales vendidos a fincas", "7. Rendimiento de animales vendidos", "8. Rendimiento en finca por periodo", "9. Análisis de crecimiento según dieta/lote"].map(t => [t, () => demo("pesos de venta, rendimientos en matadero o subasta ni precios"), "p"])],
+  ["7. Parámetros Nacionales", rParametrosNac, "p"],
+  ["8. Reportes personalizados", [["1. Obtener reportes", rPersObtener, ""], ["2. Crear o modificar reportes", rPersCrear, ""], ["3. Exportar reportes", rPersExportar, ""], ["4. Importar reportes", rPersImportar, ""]]]];
+// Aplana el menú con un id por ruta
+const RP_LISTA = []; (function aplanar(l, ruta){ l.forEach(([t, x, par]) => { const r = [...ruta, t]; if (Array.isArray(x)) aplanar(x, r); else RP_LISTA.push({id: "r" + RP_LISTA.length, ruta: r, fn: x, par: par || ""}); }); })(RP_MENU, []);
+function rpMenuHTML(l, ruta, nivel){
+  return l.map(([t, x]) => { const r = [...ruta, t];
+    if (!Array.isArray(x)){ const it = RP_LISTA.find(i => i.ruta.join("|") === r.join("|")); return `<button class="row" data-rp="${it.id}" style="padding:9px 12px"><span class="body"><span class="t" style="font-weight:600">${esc(t)}</span></span></button>`; }
+    const k = r.join("|"), ab = RP.abiertos[k];
+    return `<details class="box" ${ab ? "open" : ""} data-rp-grupo="${esc(k)}" style="${nivel ? "margin:6px 0 6px 10px" : ""}"><summary>${esc(t)} <span class="s">${RP_LISTA.filter(i => i.ruta.join("|").startsWith(k + "|")).length}</span></summary><div class="in" style="padding-top:4px">${rpMenuHTML(x, r, nivel + 1)}</div></details>`; }).join("");
+}
+function rpTabla(t, ti){
+  const ver = t.rows.slice(0, RP.n);
+  return `<h2>${esc(t.titulo)} <span class="count">${t.rows.length}</span></h2>${t.rows.length ? `<div class="tablewrap"><table class="t"><thead><tr>${t.cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>
+    ${ver.map(r => `<tr>${r.map((v, j) => `<td>${j === t.num && vamppAnimal(v) ? `<button class="mini" data-vp-vaca="${esc(v)}">${esc(v)}</button>` : esc(String(v ?? ""))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    <div class="actionsrow">${t.rows.length > RP.n ? `<button class="btn ghost" data-rp-mas="1">Ver ${Math.min(50, t.rows.length - RP.n)} más (${n0(ver.length)} de ${n0(t.rows.length)})</button>` : ""}<button class="btn ghost" data-rp-csv="${ti}">Descargar CSV</button></div>`
+    : `<div class="panel"><p class="note" style="margin:0 0 ${RP.p.desde === "1900-01-01" ? 0 : 10}px">No hay registros con estas opciones.</p>${RP.p.desde !== "1900-01-01" && (RP_LISTA.find(i => i.id === RP.id) || {par: ""}).par.includes("p") ? `<div class="actionsrow" style="margin-top:0"><button class="btn ghost" data-rp-todo="1">Ver todo el historial</button></div>` : ""}</div>`}`;
+}
+function rpForm(M, it, R){
+  const par = it.par, o = R.opciones || {}, s = R.sel || {};
+  const sel = (id, lbl, ops, v) => `<label>${lbl}<select class="field" id="${id}">${ops.map(([k, l]) => `<option value="${esc(k)}" ${k === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
+  let h = "";
+  if (par.includes("p")) h += `<label>Desde<input class="field" type="date" id="rp-desde" value="${rpParam(M, "desde")}"></label><label>Hasta<input class="field" type="date" id="rp-hasta" value="${rpParam(M, "hasta")}"></label>`;
+  if (par.includes("v")) h += sel("rp-meses", "Meses", [[6, "6 meses"], [12, "12 meses"], [24, "24 meses"], [36, "36 meses"]].map(([k, l]) => [String(k), l]), String(rpParam(M, "meses"))) + `<label>Hasta<input class="field" type="date" id="rp-hasta" value="${rpParam(M, "hasta")}"></label>`;
+  if (o.fecha) h += sel("rp-fecha", "Fecha", o.fecha, s.fecha);
+  if (o.vaca) h += sel("rp-vaca", "Vaca", o.vaca, s.vaca);
+  if (o.cod) h += sel("rp-cod", "Código", o.cod, s.cod);
+  if (o.pers) h += sel("rp-pers", "Reporte", o.pers, s.pers);
+  return h ? `<div class="form" style="margin:10px 0">${h}</div>` : "";
+}
+function rpCorrer(){
+  const h = vamppHist(); const it = RP_LISTA.find(i => i.id === RP.id); if (!h || !it) return null;
+  const M = rpModelo(h.H); let R;
+  try { R = it.fn(M) || {}; } catch(e){ R = {nota: "No se pudo calcular este reporte con los datos del respaldo (" + e.message + ")."}; }
+  return {M, it, R};
+}
+function pantallaReportes(){
+  const h = vamppHist();
+  if (!h) return `<p class="hello">Reportes de VAMPP</p><div class="panel"><p style="margin:0 0 10px">Suba el respaldo de VAMPP para generar los reportes.</p><div class="actionsrow" style="margin-top:0"><button class="btn" data-tab="datos">Ir a Datos para subirlo</button></div></div>`;
+  if (!RP.id) return `<p class="hello">Reportes de VAMPP</p><p class="lead">Los mismos reportes del menú "Reportes y análisis" de VAMPP, calculados con el respaldo de la finca ${esc(h.v.finca)}. Datos hasta el ${fV(h.H.ultimo)}.</p>
+    <p class="note" style="margin-top:0">${DEMO_TXT}: algunos reportes salen vacíos o simplificados porque el respaldo no trae esos datos. Cada uno lo avisa.</p>${rpMenuHTML(RP_MENU, [], 0)}`;
+  const {M, it, R} = rpCorrer();
+  const k = (R.kpis || []);
+  return `<p class="hello" style="margin-bottom:2px">${esc(it.ruta[it.ruta.length - 1].replace(/^\d+\.\s*/, ""))}</p>
+    <p class="note" style="margin-top:0">${it.ruta.map(esc).join(" › ")}</p>
+    <div class="actionsrow" style="margin-top:0"><button class="btn ghost" data-rp-volver="1">← Todos los reportes</button></div>
+    ${R.demo ? `<div class="panel" style="margin-top:12px"><span class="pill media">${DEMO_TXT}</span><p style="margin:8px 0 0">${esc(R.demo.replace(DEMO_TXT + ": ", ""))}</p></div>` : `
+    ${rpForm(M, it, R)}${R.html || ""}
+    ${k.length ? `<div class="kpis">${k.map(([l, v, d]) => `<div class="kpi"><div class="label">${esc(l)}</div><div class="v">${esc(String(v))}</div>${d ? `<div class="d">${esc(d)}</div>` : ""}</div>`).join("")}</div>` : ""}
+    ${R.chart ? `<div class="panel" style="margin-top:12px">${chart({...R.chart, full: R.chart.full || R.chart.labels, h: 180, aria: it.ruta[it.ruta.length - 1]})}</div>` : ""}
+    ${(R.tablas || []).map(rpTabla).join("")}
+    ${R.nota ? `<p class="note">${esc(R.nota)}</p>` : ""}`}`;
+}
+function rpCSV(ti){
+  const r = rpCorrer(); if (!r) return; const t = (r.R.tablas || [])[+ti]; if (!t) return;
+  const q = v => { const s = String(v ?? ""); return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const txt = "﻿" + [t.cols, ...t.rows].map(r => r.map(q).join(";")).join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], {type: "text/csv;charset=utf-8"}));
+  a.download = (r.it.ruta[r.it.ruta.length - 1].replace(/^\d+\.\s*/, "") + " - " + t.titulo).replace(/[\\/:*?"<>|]/g, "") + ".csv"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function rpGuardarPers(){
+  const n = ($("#rpp-nombre").value || "").trim(); if (!n) return toast("Póngale un nombre al reporte.");
+  const cols = [...document.querySelectorAll(".rpp-col:checked")].map(x => x.value); if (!cols.length) return toast("Elija al menos una columna.");
+  const defs = store.get("rpPers", []).filter(d => d.n !== n && d.n !== RP.p.pers); defs.push({n, cols, cat: $("#rpp-cat").value, est: $("#rpp-est").value});
+  store.set("rpPers", defs); RP.p.pers = n; toast("Listo: reporte guardado. Está en 8.1 Obtener reportes."); render();
+}
+function rpExportarPers(){
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(store.get("rpPers", []), null, 1)], {type: "application/json"}));
+  a.download = "Reportes personalizados Rumia.json"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function rpImportarPers(f){
+  try { const l = JSON.parse(await f.text()); if (!Array.isArray(l)) throw 0; const ok = l.filter(d => d && d.n && Array.isArray(d.cols));
+    const defs = store.get("rpPers", []).filter(d => !ok.some(x => x.n === d.n)); store.set("rpPers", [...defs, ...ok]); toast(`Listo: ${ok.length} reporte${ok.length === 1 ? "" : "s"} importado${ok.length === 1 ? "" : "s"}.`); render();
+  } catch(e){ toast("Ese archivo no es de reportes de Rumia."); }
+}
 function pantallaMas(){
   const fila = (k, t, s) => `<button class="row" data-tab="${k}"><span class="tag info">${ICON[k]||""}</span><span class="body"><span class="t">${t}</span><br><span class="s">${s}</span></span></button>`;
   return `<p class="hello">Más</p>
-  <div class="list menu">${fila("ordeno","Ordeño y calidad de leche","Células somáticas, conductividad, retiro, vacas duras y flujo")}${vamppHist() ? fila("vampp","Historial de VAMPP","Partos, servicios, palpaciones, leche, salud, bajas, toros y finca") : ""}${fila("graficos","Análisis","Gráficos y calculadora de concentrado")}${MOSTRAR_ASIST ? fila("asistente","Asistente","Preguntas sobre su hato") : ""}${fila("datos","Datos y ajustes","Cargar reportes, idioma, modo oscuro")}</div>`;
+  <div class="list menu">${fila("ordeno","Ordeño y calidad de leche","Células somáticas, conductividad, retiro, vacas duras y flujo")}${vamppHist() ? fila("reportes","Reportes de VAMPP","Los reportes de VAMPP: resumen del hato, reproducción, salud, crecimiento, leche y más") + fila("vampp","Historial de VAMPP","Partos, servicios, palpaciones, leche, salud, bajas, toros y finca") : ""}${fila("graficos","Análisis","Gráficos y calculadora de concentrado")}${MOSTRAR_ASIST ? fila("asistente","Asistente","Preguntas sobre su hato") : ""}${fila("datos","Datos y ajustes","Cargar reportes, idioma, modo oscuro")}</div>`;
 }
 let tab = location.hash.slice(1) || "hoy";
-if (!["hoy","vacas","repro","crianza","mas","graficos","asistente","datos","calor","anotar","ordeno","vampp"].includes(tab)) tab = "hoy";
+if (!["hoy","vacas","repro","crianza","mas","graficos","asistente","datos","calor","anotar","ordeno","vampp","reportes"].includes(tab)) tab = "hoy";
 const temaEfectivo = () => document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 { const t = store.get("tema", null); if (t) document.documentElement.dataset.theme = t; }
 function cambiarTema(){ const n = temaEfectivo() === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = n; store.set("tema", n); render(); }
@@ -2950,6 +3595,7 @@ function render(){
   const rf = $("#regf"); if (rf) rf.onsubmit = e => { e.preventDefault(); guardarRegistro(); };
   const f = $("#askf"); if (f) f.onsubmit = e => { e.preventDefault(); preguntar($("#pregunta").value); };
   ["carpeta","archivos"].forEach(id => { const i = document.getElementById(id); if (i) i.onchange = e => { leerArchivos(e.target.files); e.target.value = ""; }; });
+  const ri = document.getElementById("rp-importar"); if (ri) ri.onchange = e => { if (e.target.files[0]) rpImportarPers(e.target.files[0]); e.target.value = ""; };
   const iv = document.getElementById("vampp"); if (iv) iv.onchange = e => { leerArchivos(e.target.files, false, true); e.target.value = ""; };
   const dz = $("#drop"); if (dz){
     dz.ondragover = e => { e.preventDefault(); dz.classList.add("over"); }; dz.ondragleave = () => dz.classList.remove("over");
@@ -2970,7 +3616,7 @@ async function archivosDeDrop(dt){
 function go(t){ tab = t; try{ history.replaceState(null,"","#"+t); }catch(e){} render(); window.scrollTo(0,0); }
 function toast(m){ const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(()=>t.hidden=true, 3200); }
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-tab],[data-vaca],[data-filtro],[data-q],[data-voz],[data-go],[data-hablar-ficha],[data-serie],[data-rango],[data-preset],[data-celo],[data-reg-tipo],[data-tarea],[data-borrar-reg],[data-anotar-vaca],[data-anotar-tipo],[data-q-ia],#exportreg,#masreg,#modomanual,#borrardatos,#cerrar,#sbg,#tema,#demo,#probarvoz,#elegircarpeta,#actualizar,#quitarvampp,[data-vp-ap],[data-vp-mas],[data-vp-vaca],[data-vp-todo]");
+  const el = e.target.closest("[data-tab],[data-vaca],[data-filtro],[data-q],[data-voz],[data-go],[data-hablar-ficha],[data-serie],[data-rango],[data-preset],[data-celo],[data-reg-tipo],[data-tarea],[data-borrar-reg],[data-anotar-vaca],[data-anotar-tipo],[data-q-ia],#exportreg,#masreg,#modomanual,#borrardatos,#cerrar,#sbg,#tema,#demo,#probarvoz,#elegircarpeta,#actualizar,#quitarvampp,[data-vp-ap],[data-vp-mas],[data-vp-vaca],[data-vp-todo],[data-rp],[data-rp-volver],[data-rp-mas],[data-rp-csv],[data-rp-guardar],[data-rp-borrar],[data-rp-exportar],[data-rp-todo]");
   if (!el) return;
   if (el.id==="sbg" && e.target!==el) return;
   if (el.id==="tema") return cambiarTema();
@@ -2988,6 +3634,14 @@ document.addEventListener("click", e => {
   if (el.id==="exportreg") return exportarRegistros();
   if (el.id==="borrardatos") return borrarMisDatos();
   if (el.id==="quitarvampp") return quitarVAMPP();
+  if (el.dataset.rpVolver){ RP.id = null; return render(); }
+  if (el.dataset.rpMas){ RP.n += 50; return render(); }
+  if (el.dataset.rpTodo){ RP.p.desde = "1900-01-01"; RP.n = 50; return render(); }
+  if (el.dataset.rpCsv !== undefined) return rpCSV(el.dataset.rpCsv);
+  if (el.dataset.rpGuardar) return rpGuardarPers();
+  if (el.dataset.rpBorrar){ store.set("rpPers", store.get("rpPers", []).filter(d => d.n !== el.dataset.rpBorrar)); RP.p.pers = ""; toast("Reporte borrado."); return render(); }
+  if (el.dataset.rpExportar) return rpExportarPers();
+  if (el.dataset.rp){ RP.id = el.dataset.rp; RP.n = 50; render(); return window.scrollTo(0, 0); }
   if (el.dataset.vpAp){ VP.ap = el.dataset.vpAp; VP.n = 50; return render(); }
   if (el.dataset.vpMas){ VP.n += 50; return render(); }
   if (el.dataset.vpTodo){ VP.per[VP.ap] = 0; VP.n = 50; return render(); }
@@ -3006,6 +3660,7 @@ document.addEventListener("click", e => {
   if (el.id==="probarvoz") return hablar("Vaca 861, en ordeño. Ayer dio 20,4 L; su normal es 28,9 L. Bajó la leche y la rumia. Revisarla hoy: temperatura, ubre, cascos y si está comiendo. Parto estimado el 28/10.", el);
   if (el.id==="cerrar" || el.id==="sbg") return cerrarFicha();
 });
+document.addEventListener("toggle", e => { const d = e.target; if (d && d.dataset && d.dataset.rpGrupo) RP.abiertos[d.dataset.rpGrupo] = d.open; }, true);
 document.addEventListener("change", e => {
   const el = e.target;
   if (el.dataset && el.dataset.map) return cambiarMapa(el.dataset.map, el.value);
@@ -3018,6 +3673,7 @@ document.addEventListener("change", e => {
   }
   if (el.id && el.id.startsWith("ali-")){ const k = el.id.slice(4), x = toNum(el.value); if (!isNaN(x) && x > 0){ ALI[k] = x; store.set("ali", ALI); } return render(); }
   if (el.id === "finca"){ IMP.finca = el.value.trim(); store.set("finca", IMP.finca); if (D.fuente === "import" || D.fuente === "manual"){ D.finca = IMP.finca || "Mi finca"; if (BASE) BASE.finca = D.finca; } return render(); }
+  if (["rp-desde","rp-hasta","rp-meses","rp-fecha","rp-vaca","rp-cod","rp-pers"].includes(el.id)){ const k = el.id.slice(3); RP.p[k] = k === "meses" ? +el.value : el.value; RP.n = 50; return render(); }
   if (el.id === "vp-filtro"){ VP.vaca = el.value.trim(); VP.n = 50; return render(); }
   if (el.id === "vp-per"){ VP.per[VP.ap] = +el.value; VP.n = 50; return render(); }
   if (el.id === "vp-sel"){ VP.sel = el.value.trim(); VP.n = 50; return render(); }
