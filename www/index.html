@@ -2927,12 +2927,12 @@ function pantallaVAMPP(){
   const cuerpo = ap === "resumen" ? vpResumen(H, v) : ap === "vaca" ? vpVaca(H) : ap === "toros" ? vpToros(H) : ap === "finca" ? vpFinca(H, v) : vpLista(H, ap);
   return `<p class="hello">Historial de VAMPP</p>
     <p class="note" style="margin-top:0">Finca ${esc(v.finca)}${v.nombre ? " · " + esc(v.nombre) : ""} · respaldo del ${fV(v.respaldo)} · datos hasta el ${fV(H.ultimo)}</p>
-    <div class="actionsrow" style="margin-top:0"><button class="btn ghost" data-tab="reportes">Ver los reportes de VAMPP</button></div>
+    <div class="actionsrow" style="margin-top:0"><button class="btn ghost" data-tab="reportes">Ver los reportes del hato</button></div>
     <div class="chips" role="group" aria-label="Apartado">${VP_APS.map(([k, l]) => `<button class="chip" data-vp-ap="${k}" aria-pressed="${k === ap}">${l}</button>`).join("")}</div>
     <h2>${esc((VP_APS.find(x => x[0] === ap) || ["", ""])[1])}</h2>${cuerpo}
     <p class="note">Los nombres de los exámenes y problemas se tradujeron de los códigos de VAMPP; el código original va al lado cuando hace falta.</p>`;
 }
-/* ================= Reportes de VAMPP: el mismo menú de VAMPP, calculado con el respaldo ================= */
+/* ================= Reportes del hato, calculados con el respaldo ================= */
 ICON.reportes = '<svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5M9 9h3"/></svg>';
 const RP = {id: null, n: 50, p: {}, abiertos: {}};
 const DEMO_TXT = "Versión demo gratuita";
@@ -2991,7 +2991,7 @@ function rpEstado(a, U){
   return {cat: L.sec ? "Seca" : "En ordeño", est: u ? (ab ? "Abortó" : u.res === "+" ? "Preñada" : u.res === "-" ? "Vacía" : "Inseminada") : "Sin servicio", u, del: dISO(L.parto, U), L,
     dp: u && u.res === "+" && !ab ? dISO(u.f, U) : null};
 }
-const demo = falta => ({demo: `${DEMO_TXT}: este reporte todavía no tiene datos, porque el respaldo de VAMPP no trae ${falta}. Queda listo para cuando se agreguen.`});
+const demo = falta => ({demo: `${DEMO_TXT}: este reporte todavía no tiene datos, porque el respaldo no trae ${falta}. Queda listo para cuando se agreguen.`});
 const limitado = txt => `${DEMO_TXT}: ${txt}`;
 // ---- Parámetros: un período, varios períodos, una fecha, una vaca, un código ----
 function rpParam(M, k){
@@ -3188,7 +3188,7 @@ function rEndogamia(M){
     return rel ? [a.num, fV(e.u.f), nombreToro(M.H, t), nombreToro(M.H, p.padre), p.abueloM ? nombreToro(M.H, p.abueloM) : "—", rel] : null; }).filter(Boolean);
   return {kpis: [["Servicios revisados", M.act.filter(a => rpEstado(a, M.U).u).length], ["Con parentesco", rows.length]],
     tablas: [{titulo: "Últimos servicios con parentesco", cols: ["Vaca", "Servicio", "Toro usado", "Padre de la vaca", "Abuelo materno", "Parentesco"], rows, num: 0}],
-    nota: limitado("el respaldo solo trae padre, madre y el padre de cada toro, así que el parentesco se revisa hasta abuelos. VAMPP usa el árbol completo.")};
+    nota: limitado("el respaldo solo trae padre, madre y el padre de cada toro, así que el parentesco se revisa hasta abuelos.")};
 }
 function rSeleccionToros(M){
   const usados = {}; M.A.forEach(a => a.servR.forEach(s => { if (s.f > masMeses(M.U, -24)) usados[s.toro] = (usados[s.toro] || 0) + 1; }));
@@ -3366,7 +3366,7 @@ function rPesaFecha(M){
   const l = PES(M).filter(x => x.f === f).sort((x, y) => (+x.a.num) - (+y.a.num));
   return {opciones: {fecha: fs.map(x => [x, fV(x)])}, sel: {fecha: f}, kpis: [["Vacas pesadas", l.length], ["Promedio", n1(promN(l.map(x => x.kg))) + " kg"], ["Total", n0(l.reduce((s, x) => s + x.kg, 0)) + " kg"], ["PDC promedio", n1(promN(l.map(x => x.pdc))) + " kg"], ["Días en leche promedio", n0(promN(l.map(x => x.d)))]],
     tablas: [{titulo: "Pesa del " + (f ? fV(f) : "—"), cols: ["Vaca", "Raza", "Lac", "DLac", "Kilos", "PDC", "Vrel", "Grasa", "Sólidos", "Proteína"], rows: l.map(x => [x.a.num, x.a.raza || "—", x.L.k, x.d, n1(x.kg), x.pdc != null ? n1(x.pdc) : "—", x.vrel ?? "—", "—", "—", "—"]), num: 0}],
-    nota: limitado("grasa, sólidos y proteína no vienen en el respaldo. PDC es la producción diaria corregida y Vrel el valor relativo que calcula VAMPP.")};
+    nota: limitado("grasa, sólidos y proteína no vienen en el respaldo. PDC es la producción diaria corregida y Vrel el valor relativo de cada vaca.")};
 }
 function rAnalisisFecha(M){
   const fs = fechasControl(M), f = RP.p.fecha && fs.includes(RP.p.fecha) ? RP.p.fecha : fs[0], l = PES(M).filter(x => x.f === f);
@@ -3436,7 +3436,7 @@ function rParametrosNac(M){
   const f = [["Servicios por preñez", get("Servicios por preñez"), "2,2", "2"], ["Días abiertos", get("Días abiertos"), "136", "115"], ["Intervalo entre partos (días)", get("Intervalo entre partos"), "419", "390"],
     ["Tasa de preñez 21 días", tp, "11,9 %", "20 %"], ["Edad al primer parto (meses)", get("Edad al primer parto"), "31,9", "24 a 26"]];
   return {tablas: [{titulo: "Su finca contra el promedio Dos Pinos", cols: ["Indicador", "Su finca", "Dos Pinos", "Meta"], rows: f}],
-    nota: limitado("VAMPP compara contra los parámetros nacionales que baja de internet; esta versión compara contra el promedio Dos Pinos de agosto 2026 que ya trae Rumia.")};
+    nota: limitado("esta versión compara contra el promedio Dos Pinos de agosto 2026 que ya trae Rumia, no contra los parámetros nacionales.")};
 }
 // Reportes personalizados: el usuario elige columnas del resumen individual y filtros
 const RP_COLS = [["num","Vaca"],["ident","Identificación"],["nac","Nacimiento"],["raza","Raza"],["lact","Lactancia"],["cat","Situación"],["est","Estado reproductivo"],["del","Días en leche"],["dp","Días preñez"],
@@ -3536,8 +3536,8 @@ function rpCorrer(){
 }
 function pantallaReportes(){
   const h = vamppHist();
-  if (!h) return `<p class="hello">Reportes de VAMPP</p><div class="panel"><p style="margin:0 0 10px">Suba el respaldo de VAMPP para generar los reportes.</p><div class="actionsrow" style="margin-top:0"><button class="btn" data-tab="datos">Ir a Datos para subirlo</button></div></div>`;
-  if (!RP.id) return `<p class="hello">Reportes de VAMPP</p><p class="lead">Los mismos reportes del menú "Reportes y análisis" de VAMPP, calculados con el respaldo de la finca ${esc(h.v.finca)}. Datos hasta el ${fV(h.H.ultimo)}.</p>
+  if (!h) return `<p class="hello">Reportes del hato</p><div class="panel"><p style="margin:0 0 10px">Suba el respaldo del hato para generar los reportes.</p><div class="actionsrow" style="margin-top:0"><button class="btn" data-tab="datos">Ir a Datos para subirlo</button></div></div>`;
+  if (!RP.id) return `<p class="hello">Reportes del hato</p><p class="lead">Reportes de resumen, reproducción, salud, crecimiento y producción, calculados con el respaldo de la finca ${esc(h.v.finca)}. Datos hasta el ${fV(h.H.ultimo)}.</p>
     <p class="note" style="margin-top:0">${DEMO_TXT}: algunos reportes salen vacíos o simplificados porque el respaldo no trae esos datos. Cada uno lo avisa.</p>${rpMenuHTML(RP_MENU, [], 0)}`;
   const {M, it, R} = rpCorrer();
   const k = (R.kpis || []);
@@ -3576,7 +3576,7 @@ async function rpImportarPers(f){
 function pantallaMas(){
   const fila = (k, t, s) => `<button class="row" data-tab="${k}"><span class="tag info">${ICON[k]||""}</span><span class="body"><span class="t">${t}</span><br><span class="s">${s}</span></span></button>`;
   return `<p class="hello">Más</p>
-  <div class="list menu">${fila("ordeno","Ordeño y calidad de leche","Células somáticas, conductividad, retiro, vacas duras y flujo")}${vamppHist() ? fila("reportes","Reportes de VAMPP","Los reportes de VAMPP: resumen del hato, reproducción, salud, crecimiento, leche y más") + fila("vampp","Historial de VAMPP","Partos, servicios, palpaciones, leche, salud, bajas, toros y finca") : ""}${fila("graficos","Análisis","Gráficos y calculadora de concentrado")}${MOSTRAR_ASIST ? fila("asistente","Asistente","Preguntas sobre su hato") : ""}${fila("datos","Datos y ajustes","Cargar reportes, idioma, modo oscuro")}</div>`;
+  <div class="list menu">${fila("ordeno","Ordeño y calidad de leche","Células somáticas, conductividad, retiro, vacas duras y flujo")}${vamppHist() ? fila("reportes","Reportes del hato","Resumen del hato, reproducción, salud, crecimiento, leche y más") + fila("vampp","Historial de VAMPP","Partos, servicios, palpaciones, leche, salud, bajas, toros y finca") : ""}${fila("graficos","Análisis","Gráficos y calculadora de concentrado")}${MOSTRAR_ASIST ? fila("asistente","Asistente","Preguntas sobre su hato") : ""}${fila("datos","Datos y ajustes","Cargar reportes, idioma, modo oscuro")}</div>`;
 }
 let tab = location.hash.slice(1) || "hoy";
 if (!["hoy","vacas","repro","crianza","mas","graficos","asistente","datos","calor","anotar","ordeno","vampp","reportes"].includes(tab)) tab = "hoy";
